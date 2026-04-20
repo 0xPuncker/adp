@@ -100,12 +100,26 @@ to execute every phase, run sensors, and manage state.
 4. **Generate `harness.yaml`** with sensors AND actions matching the detected stack:
 
    ```yaml
+   mode: sprint                      # "sprint" (decomposed) or "continuous" (single-pass)
+   min_score: 80                     # Hard threshold — sprint fails below this
+
    sensors:
      typecheck: { command: tsc --noEmit }
      lint:      { command: npm run lint }
      test:      { command: npm test }
 
    order: [typecheck, lint, test]
+
+   evaluator:                        # QA evaluator configuration
+     enabled: true                   # Separate agent judges each sprint
+     timing: per_sprint              # "per_sprint" | "end_of_run" | "adaptive"
+     criteria:                       # Hard-fail thresholds (0-100 each)
+       correctness: 80              # Does it actually work as specified?
+       completeness: 75             # Are all acceptance criteria met?
+       code_quality: 70             # Clean, idiomatic, follows guides?
+       test_coverage: 70            # Are the important paths tested?
+     live_test: false               # If true, evaluator launches app and interacts
+     live_test_command: npm start   # Command to start the app for live testing
 
    actions:                          # external-world commands — see Action Zones
      db_up:
@@ -128,6 +142,13 @@ to execute every phase, run sensors, and manage state.
    - TypeScript: `tsc --noEmit`, `npm run lint`, `npm test`
    - Rust: `cargo check`, `cargo clippy -- -D warnings`, `cargo test`
    - Python: `mypy .`, `ruff check .`, `pytest`
+
+   Defaults (evaluator):
+   - `enabled: true` unless user explicitly disables
+   - `timing: per_sprint` for Large/Complex, `end_of_run` for Medium
+   - `min_score: 80` (global threshold when evaluator is disabled)
+   - `live_test: false` unless the project has a running server (Express, FastAPI, etc.)
+   - `criteria` thresholds start at 70-80; tighten after first successful feature run
 
    Defaults (actions) — only populated when evidence is found in the repo
    (Dockerfile, docker-compose.yaml, prisma/ dir, fly.toml, etc.). Never invent.
@@ -347,10 +368,25 @@ STOP and create `tasks.md`. Log: `safety_valve_triggered` to activity.
 
 **Load guides:** ALL guides (stack, architecture, structure, conventions, testing, integrations, concerns)
 
+**Execution mode** (from `harness.yaml → mode`):
+- `sprint` (default) — Decompose into sprints, evaluate each. Best for Large/Complex.
+- `continuous` — Build all tasks in one pass, evaluate once at end. Best with Opus 4.6+ on Medium scope.
+
+---
+
+#### Sprint Mode (`mode: sprint`)
+
 For each task:
 
-1. **Sprint contract** — State what you'll build and how you'll verify it.
-   Log to activity: `sprint_start: "Sprint N: TASK-XX {summary}"`
+1. **Sprint contract (bidirectional):**
+   - **Generator** states: what you'll build, which files, how you'll verify it.
+   - **Evaluator review** — Spawn a sub-agent (fresh context) to review the contract:
+     - Does the contract fully address the task's acceptance criteria?
+     - Are the verification methods concrete and testable?
+     - Are there gaps between the task spec and what's proposed?
+   - If the evaluator flags issues, revise the contract before building.
+   - Log to activity: `sprint_start: "Sprint N: TASK-XX {summary}"`
+   - Write contract to `.specs/features/{feature}/contracts/sprint-N.md`
 
 2. **Prerequisites** — If `spec.md → Prerequisites` lists actions not yet run
    this session, run them now (obey their Action Zone). Do not bypass a denied
@@ -373,8 +409,44 @@ For each task:
    - Attempt 2: Re-read relevant guide + error, fix with broader context
    - Attempt 3: Log blocker to `state.json` AND `STATE.md → Blockers`, halt, ask user
 
-7. **On sensor pass — Score and commit:**
-   - Self-assess quality 0–100 against the sprint contract
+7. **Evaluator QA** (if `evaluator.enabled: true`):
+   Spawn a **separate sub-agent** with fresh context. Provide it ONLY:
+   - The sprint contract (`contracts/sprint-N.md`)
+   - The diff of files changed (`git diff` from before sprint start)
+   - The sensor results (pass/fail + output)
+   - The evaluator criteria from `harness.yaml`
+   - If `live_test: true`: launch the app and interact with it
+
+   The evaluator grades each criterion (0–100) and writes a verdict:
+   ```json
+   {
+     "sprint": 1,
+     "verdict": "pass",
+     "scores": {
+       "correctness": 92,
+       "completeness": 88,
+       "code_quality": 85,
+       "test_coverage": 80
+     },
+     "issues": [],
+     "suggestions": []
+   }
+   ```
+
+   **Hard fail:** If ANY criterion < its threshold in `harness.yaml → evaluator.criteria`,
+   the sprint FAILS. The evaluator's `issues[]` become the fix instructions.
+   - Attempt 1: Fix issues using evaluator feedback, re-run sensors, re-evaluate.
+   - Attempt 2: Fix with broader context (re-read guides + evaluator critique).
+   - Attempt 3: Log blocker, halt.
+
+   **Soft pass:** All criteria above threshold. The evaluator's `suggestions[]` are
+   logged but do NOT block the sprint.
+
+8. **On pass — Score and commit:**
+   - Final score = average of evaluator's criterion scores (NOT self-assessed).
+   - If evaluator is disabled, self-assess 0–100 against `min_score` threshold.
+   - **Hard threshold:** If score < `harness.yaml → min_score`, sprint fails.
+     Return to step 7 fix loop.
    - Commit atomically using **Conventional Commits 1.0.0** + ADP trace tag:
      ```
      feat(scope): short summary [ADP-TASK-01]
@@ -382,11 +454,12 @@ For each task:
      Implements: REQ-01, REQ-01.1
      {what was implemented}
      Sensors: typecheck ✓ lint ✓ test ✓
-     Score: 92/100
+     Evaluator: correctness 92 | completeness 88 | quality 85 | tests 80
+     Score: 86/100
      ```
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
-8. **Update artifacts:**
+9. **Update artifacts:**
    - `tasks.md` — check `- [x]` boxes on completed items, bump `Progress: N/total`
    - `state.json` — record sprint result:
      ```json
@@ -395,17 +468,37 @@ For each task:
        "task": "TASK-01 {summary}",
        "status": "done",
        "contract": "{what was agreed}",
-       "score": 92,
+       "score": 86,
+       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80 },
        "requirements": ["REQ-01", "REQ-01.1"],
        "commit": "abc123f",
        "cost": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0 }
      }
      ```
 
-9. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
-   Fresh context: re-read only files relevant to the next task.
-   For heavy research or parallelizable independent tasks, consider
-   [Sub-Agent Delegation](#sub-agent-delegation).
+10. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
+    Fresh context: re-read only files relevant to the next task.
+    For heavy research or parallelizable independent tasks, consider
+    [Sub-Agent Delegation](#sub-agent-delegation).
+
+---
+
+#### Continuous Mode (`mode: continuous`)
+
+For capable models (Opus 4.6+) on Medium scope, skip sprint decomposition:
+
+1. Load ALL task definitions at once.
+2. Build the entire feature as one continuous implementation pass.
+3. Run sensors after completion. Fix any failures.
+4. Run the **evaluator once at end-of-run** (full diff, all criteria).
+5. If evaluator fails any criterion → iterate on the specific issues.
+6. Commit when all criteria pass.
+
+This mode is faster and cheaper but offers less granular recovery.
+Use sprint mode when: scope is Large/Complex, or when the feature has
+high interdependency between tasks that benefit from incremental verification.
+
+---
 
 ### Step 6: VALIDATE (feature-level UAT)
 
@@ -415,10 +508,16 @@ After all tasks `done`:
    one task cited it and that task passed. Any REQ with zero passing tasks =
    validation failure. Log gaps to `STATE.md → Blockers`.
 2. **Full sensor suite** — Run all sensors once more end-to-end.
-3. **Interactive UAT (Complex only)** — Walk the user through each MVP REQ,
+3. **Evaluator final pass** — If evaluator is enabled, run one final evaluation
+   against the complete feature (all files changed since feature start). The
+   evaluator checks holistic quality: does it all fit together? Any integration
+   gaps between individually-passing sprints?
+4. **Live test (if configured)** — Launch the app with `evaluator.live_test_command`,
+   interact with the feature's functionality, verify happy paths and error cases.
+5. **Interactive UAT (Complex only)** — Walk the user through each MVP REQ,
    asking them to confirm expected behavior. Record confirmations in
    `.specs/features/{feature}/validation.md`.
-4. Update state: `status: "idle"`, `phase: null`.
+6. Update state: `status: "idle"`, `phase: null`.
 
 ### Step 7: Complete
 
@@ -690,6 +789,61 @@ For work that would bloat the orchestrator's context, delegate to a sub-agent:
 
 The orchestrator keeps planning coherence + state. Sub-agents receive only their
 task definition + the specific guide(s) relevant to their work — not the full context.
+
+### Evaluator Agent
+
+The evaluator is a **separate sub-agent with fresh context** that judges the
+generator's work. Separation is critical — agents that evaluate their own output
+are systematically lenient (Anthropic, "Harness Design for Long-Running Apps").
+
+**When to run the evaluator:**
+- `per_sprint` — After each sprint passes sensors. Catches issues early.
+- `end_of_run` — Once after all tasks complete. Cheaper, less granular.
+- `adaptive` — Per-sprint for the first 3 sprints, then end-of-run if all pass.
+
+**Evaluator prompt template:**
+
+```
+You are a QA evaluator. You did NOT write this code. Review it critically.
+
+## Sprint Contract
+{contract content}
+
+## Files Changed
+{git diff}
+
+## Sensor Results
+{sensor output}
+
+## Grading Criteria (hard thresholds)
+- Correctness (min {threshold}): Does the implementation match the contract?
+- Completeness (min {threshold}): Are ALL acceptance criteria addressed?
+- Code Quality (min {threshold}): Clean, idiomatic, follows project conventions?
+- Test Coverage (min {threshold}): Are important paths tested? Edge cases?
+
+## Instructions
+1. Read the contract carefully.
+2. Review every changed file against the contract.
+3. If live_test is enabled, launch the app and interact with the feature.
+4. Score each criterion 0-100. Be skeptical — do not praise mediocre work.
+5. List concrete ISSUES (things that must be fixed to pass).
+6. List SUGGESTIONS (improvements that won't block the sprint).
+7. Verdict: "pass" if ALL scores >= thresholds, otherwise "fail".
+
+Output JSON only.
+```
+
+**Evaluator tuning:**
+- The evaluator should be calibrated over time. If it's too lenient (passing
+  work that later breaks), tighten thresholds or add criteria.
+- If it's too strict (blocking good work on pedantic issues), loosen thresholds
+  or clarify criteria descriptions.
+- Log evaluator verdicts to `state.json → sprints[].evaluator_scores` for
+  retrospective analysis.
+
+**Key principle from Anthropic:** "Every component in a harness encodes an
+assumption about what the model can't do on its own. Those assumptions are worth
+stress testing — they may be incorrect, and they can go stale as models improve."
 
 ### Conventional Commits 1.0.0
 
