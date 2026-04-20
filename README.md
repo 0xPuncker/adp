@@ -120,9 +120,20 @@ State persists between sessions. Stop with `adp pause`, continue with `adp resum
 
 ### The Four Phases
 
-```
-SPECIFY → DESIGN → TASKS → EXECUTE → VALIDATE
-required  optional  optional  required  required
+```mermaid
+flowchart LR
+    req([feature request]) --> size{complexity?}
+    size -->|Small| quick[Quick Mode]
+    size -->|Medium| specM[Specify]
+    size -->|Large / Complex| specL[Specify]
+    specM --> execM[Execute]
+    specL --> design[Design]
+    design --> tasks[Tasks]
+    tasks --> execL[Execute]
+    quick --> validate[Validate]
+    execM --> validate
+    execL --> validate
+    validate --> done([shipped])
 ```
 
 Phases auto-size to the scope of the work:
@@ -138,17 +149,14 @@ Phases auto-size to the scope of the work:
 
 Every piece of work is traceable end-to-end:
 
-```
-REQ-01.2 (spec.md)   — WHEN user submits invalid email THEN return 422
-   ↓
-TASK-05 (tasks.md)   — Requirement: REQ-01.2 · Files: src/routes/auth.ts
-   ↓
-Sprint (execution)   — contract → build → sensors → score
-   ↓
-commit               — feat(auth): validate email [ADP-TASK-05]
-                       Implements: REQ-01.2
-   ↓
-validation.md        — REQ-01.2 ✓ covered by TASK-05
+```mermaid
+flowchart TD
+    req["<b>REQ-01.2</b> <i>spec.md</i><br/>WHEN invalid email THEN 422"]
+    task["<b>TASK-05</b> <i>tasks.md</i><br/>Requirement: REQ-01.2<br/>Files: src/routes/auth.ts"]
+    sprint["<b>Sprint</b> <i>execution</i><br/>contract → build → sensors → score"]
+    commit["<b>commit</b><br/>feat(auth): validate email [ADP-TASK-05]<br/>Implements: REQ-01.2"]
+    val["<b>validation.md</b><br/>REQ-01.2 ✓ covered by TASK-05"]
+    req --> task --> sprint --> commit --> val
 ```
 
 Break the chain = validation failure.
@@ -164,6 +172,56 @@ Two layers protect every task:
   (typecheck, lint, test) run after every build. No commit until they pass.
   3 failures on the same error ⇒ stuck detection ⇒ halt and ask the user.
 
+### The Sprint Lifecycle
+
+Every task inside Execute flows through the same gated loop:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Contract: sprint_start
+    Contract --> Build: state goal + verification
+    Build --> Sensors: code written
+    Sensors --> Score: typecheck ✓ lint ✓ test ✓
+    Sensors --> Fix: any sensor failed
+    Fix --> Sensors: retry (≤3x)
+    Fix --> Blocker: same error 3x
+    Score --> Commit: score recorded
+    Commit --> [*]: sprint_end
+    Blocker --> [*]: halt + log STATE.md
+```
+
+A failing sensor never auto-merges — the pipeline either retries, escalates,
+or halts and asks the user.
+
+### Action Zones
+
+Autonomy is scoped to code, not infrastructure. Every shell command falls
+into one of three zones; the zone decides whether the agent may run it
+unprompted:
+
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant U as You
+    participant S as Shell
+    Note over A: 🟢 Free — code + sensors + local git
+    A->>S: tsc --noEmit / eslint / vitest
+    S-->>A: pass/fail
+    A->>S: git add / git commit (local)
+
+    Note over A,U: 🟡 Gated — declared in harness.yaml actions:
+    A->>U: "run 'docker compose up -d postgres'?"
+    U-->>A: approve (once per session)
+    A->>S: docker compose up -d postgres
+
+    Note over A,U: 🔴 Always ask — destructive or externally visible
+    A->>U: "run 'flyctl deploy'?"
+    U-->>A: approve (every call)
+    A->>S: flyctl deploy
+```
+
+See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
+
 ### Core Rules
 
 1. **Never fabricate.** Resolve facts via Knowledge Verification Chain:
@@ -173,6 +231,7 @@ Two layers protect every task:
 3. **Fresh context per task.** Re-read what the next task needs; drop history.
 4. **Conventional Commits 1.0.0** + `[ADP-TASK-NN]` trailer.
 5. **Don't skip sensors.** Never disable a check to make it pass — fix the code.
+6. **Action zones.** Free for code, gated for infra, always-ask for destructive state.
 
 ---
 
