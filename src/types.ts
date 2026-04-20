@@ -1,7 +1,9 @@
 export type Phase = "specify" | "design" | "tasks" | "execute";
 export type Complexity = "small" | "medium" | "large" | "complex";
-export type SprintStatus = "contract" | "build" | "qa" | "done" | "failed";
+export type SprintStatus = "contract" | "build" | "qa" | "evaluating" | "done" | "failed";
 export type PipelineStatus = "idle" | "running" | "paused" | "blocked";
+export type ExecutionMode = "sprint" | "continuous";
+export type EvaluatorTiming = "per_sprint" | "end_of_run" | "adaptive";
 
 export interface Sprint {
   id: number;
@@ -9,9 +11,25 @@ export interface Sprint {
   status: SprintStatus;
   contract: string;
   score: number | null;
+  evaluator_scores: EvaluatorScores | null;
   cost: TokenCost;
   startedAt: string | null;
   completedAt: string | null;
+}
+
+export interface EvaluatorScores {
+  correctness: number;
+  completeness: number;
+  code_quality: number;
+  test_coverage: number;
+}
+
+export interface EvaluatorVerdict {
+  sprint: number;
+  verdict: "pass" | "fail";
+  scores: EvaluatorScores;
+  issues: string[];
+  suggestions: string[];
 }
 
 export interface TokenCost {
@@ -22,15 +40,15 @@ export interface TokenCost {
 
 export interface Activity {
   timestamp: string;
-  type: "sprint_start" | "sprint_end" | "sensor_pass" | "sensor_fail" | "commit" | "error" | "info";
+  type: string;
   message: string;
 }
 
 export interface PipelineState {
-  status: PipelineStatus;
-  phase: Phase | null;
+  status: string;
+  phase: string | null;
   feature: string | null;
-  complexity: Complexity | null;
+  complexity: string | null;
   sprints: Sprint[];
   activity: Activity[];
   startedAt: string | null;
@@ -51,10 +69,21 @@ export interface SensorConfig {
   fix_hint?: string;
 }
 
+export interface EvaluatorConfig {
+  enabled: boolean;
+  timing: EvaluatorTiming;
+  criteria: EvaluatorScores;
+  live_test: boolean;
+  live_test_command?: string;
+}
+
 export interface HarnessConfig {
+  mode: ExecutionMode;
+  min_score: number;
   sensors: {
     execute: {
       computational: SensorConfig[];
     };
   };
+  evaluator: EvaluatorConfig;
 }
