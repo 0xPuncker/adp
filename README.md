@@ -1,4 +1,4 @@
-# ADP — Autonomous Development Pipeline
+# ADP - Autonomous Development Pipeline
 
 Harness-driven, spec-to-code execution for Claude Code.
 
