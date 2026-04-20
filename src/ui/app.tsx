@@ -218,14 +218,14 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
         {view === "dashboard" && (
           isNarrow ? (
             <Box flexDirection="column" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} />
+              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
               <Box marginTop={1}>
                 <ActivityLog activity={state.activity} limit={8} />
               </Box>
             </Box>
           ) : (
             <Box flexDirection="row" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} />
+              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
               <Box marginLeft={1}>
                 <ActivityLog activity={state.activity} limit={rows > 30 ? 16 : 10} />
               </Box>
