@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { StateManager } from "../state/manager.js";
 import { HarnessEngine } from "../harness/engine.js";
-import type { PipelineState } from "../types.js";
+import type { PipelineState, Sprint } from "../types.js";
+import { readSessionSprints } from "../session/sprints.js";
 import { useTerminalSize } from "./hooks/use-terminal-size.js";
 import { theme } from "./theme.js";
 import { Header } from "./components/header.js";
@@ -37,6 +38,27 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
   useEffect(() => {
     const load = async () => {
       const s = await stateManager.load(true);
+      // Merge session-detected sprints (ground truth when state.json is stale)
+      const sessionSprints = await readSessionSprints(cwd);
+      if (sessionSprints.length > s.sprints.length) {
+        const stateIds = new Set(s.sprints.map((sp) => sp.id));
+        for (const ss of sessionSprints) {
+          if (!stateIds.has(ss.id)) {
+            s.sprints.push({
+              id: ss.id,
+              task: ss.task,
+              status: ss.status === "done" ? "done" : ss.status === "in_progress" ? "build" : "contract",
+              contract: "",
+              score: null,
+              evaluator_scores: null,
+              cost: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+              startedAt: null,
+              completedAt: null,
+            } as Sprint);
+          }
+        }
+        s.sprints.sort((a, b) => a.id - b.id);
+      }
       setState(s);
       setLastRefresh(new Date());
     };
