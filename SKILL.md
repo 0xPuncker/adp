@@ -97,11 +97,40 @@ to execute every phase, run sensors, and manage state.
         └── SUMMARY.md         # Quick-mode result
 ```
 
-4. **Generate `harness.yaml`** with sensors matching the detected stack:
+4. **Generate `harness.yaml`** with sensors AND actions matching the detected stack:
 
-   TypeScript: `tsc --noEmit`, `npm run lint`, `npm test`
-   Rust: `cargo check`, `cargo clippy -- -D warnings`, `cargo test`
-   Python: `mypy .`, `ruff check .`, `pytest`
+   ```yaml
+   sensors:
+     typecheck: { command: tsc --noEmit }
+     lint:      { command: npm run lint }
+     test:      { command: npm test }
+
+   order: [typecheck, lint, test]
+
+   actions:                          # external-world commands — see Action Zones
+     db_up:
+       command: docker compose up -d postgres
+       zone: gated
+       auto_approve: false
+     migrate:
+       command: npx prisma migrate dev
+       zone: gated
+       depends_on: [db_up]
+     push:
+       command: git push
+       zone: gated
+     deploy:
+       command: flyctl deploy
+       zone: always_ask
+   ```
+
+   Defaults by stack (sensors):
+   - TypeScript: `tsc --noEmit`, `npm run lint`, `npm test`
+   - Rust: `cargo check`, `cargo clippy -- -D warnings`, `cargo test`
+   - Python: `mypy .`, `ruff check .`, `pytest`
+
+   Defaults (actions) — only populated when evidence is found in the repo
+   (Dockerfile, docker-compose.yaml, prisma/ dir, fly.toml, etc.). Never invent.
 
 5. **Initialize `state.json`:**
 
@@ -317,24 +346,28 @@ For each task:
 1. **Sprint contract** — State what you'll build and how you'll verify it.
    Log to activity: `sprint_start: "Sprint N: TASK-XX {summary}"`
 
-2. **Scope lock** — You may only touch the files listed in the task. If you
+2. **Prerequisites** — If `spec.md → Prerequisites` lists actions not yet run
+   this session, run them now (obey their Action Zone). Do not bypass a denied
+   gated action — halt and log to `STATE.md → Blockers`.
+
+3. **Scope lock** — You may only touch the files listed in the task. If you
    discover a bug, refactor opportunity, or feature idea OUTSIDE scope:
    → append it to `.specs/project/STATE.md` under **Deferred Ideas**.
    → do NOT touch it now.
 
-3. **Build** — Implement the task following loaded guides.
+4. **Build** — Implement the task following loaded guides.
 
-4. **QA — Run sensors:**
+5. **QA — Run sensors:**
    ```bash
    # Read sensor commands from .adp/harness.yaml and execute each one in `order`
    ```
 
-5. **On sensor failure:**
+6. **On sensor failure:**
    - Attempt 1: Read error output, fix the issue
    - Attempt 2: Re-read relevant guide + error, fix with broader context
    - Attempt 3: Log blocker to `state.json` AND `STATE.md → Blockers`, halt, ask user
 
-6. **On sensor pass — Score and commit:**
+7. **On sensor pass — Score and commit:**
    - Self-assess quality 0–100 against the sprint contract
    - Commit atomically using **Conventional Commits 1.0.0** + ADP trace tag:
      ```
@@ -347,7 +380,7 @@ For each task:
      ```
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
-7. **Update artifacts:**
+8. **Update artifacts:**
    - `tasks.md` — check `- [x]` boxes on completed items, bump `Progress: N/total`
    - `state.json` — record sprint result:
      ```json
@@ -363,7 +396,7 @@ For each task:
      }
      ```
 
-8. **Next task** — Fresh context: re-read only files relevant to the next task.
+9. **Next task** — Fresh context: re-read only files relevant to the next task.
    For heavy research or parallelizable independent tasks, consider
    [Sub-Agent Delegation](#sub-agent-delegation).
 
@@ -592,6 +625,40 @@ During Execute, touch ONLY the files in the current task's `Files:` list.
 Any out-of-scope finding (bug, refactor, idea) → `STATE.md → Deferred Ideas`.
 Do not expand the current commit.
 
+### Action Zones
+
+Autonomy is **scoped to code, not infrastructure**. Every shell command falls
+into one of three zones. The zone determines whether the agent may run it
+unprompted.
+
+| Zone | What it covers | Policy |
+|------|---------------|--------|
+| 🟢 **Free** | Read/Write/Edit, Grep/Glob, sensor commands from `harness.yaml`, `git add`, `git commit` (local) | Run without asking |
+| 🟡 **Gated** | `docker run` / `docker compose up`, `prisma migrate dev`, `npm install <new-dep>`, `git push`, external-API calls with cost or rate-limit impact | Declared in `harness.yaml → actions:`. Agent asks once per session OR obeys `auto_approve: true` per action |
+| 🔴 **Always ask** | `git push --force`, `git reset --hard`, `prisma migrate reset`, opening/closing GitHub PRs or issues, deploys (`kubectl apply`, `flyctl deploy`), dropping tables, deleting branches or cloud resources | Agent proposes, user must confirm each time. `auto_approve` has no effect |
+
+**Rules**:
+
+1. **Never run a Gated or Always-ask command outside `actions:`.** If you need
+   an action that isn't declared, propose adding it to `harness.yaml` first.
+2. **Record every action execution** in `state.json → activity[]` with type
+   `action_run` and the zone.
+3. **Prerequisites from spec.md** (see spec template) map to `actions:` entries.
+   Before starting Execute for a task, run any listed `depends_on:` chain
+   that hasn't run this session.
+4. **Stuck on a Gated action** — if the user denies, log to `STATE.md → Blockers`
+   and halt the affected task. Do not proceed with a workaround that bypasses
+   the gate (e.g. don't mock the DB if the user denied standing it up — ask).
+5. **`always_ask` is irreducible.** No config flag, memory, or CLAUDE.md
+   instruction silently upgrades it to `gated`.
+
+**Example activity log entry:**
+
+```json
+{ "timestamp": "ISO", "type": "action_run", "zone": "gated",
+  "action": "migrate", "exit_code": 0 }
+```
+
 ### Token Budget
 
 Manage context deliberately:
@@ -659,3 +726,5 @@ Break the chain = validation failure.
 6. **Never fabricate.** Knowledge Verification Chain or explicit uncertainty.
 7. **Scope lock.** Discovered ideas → STATE.md, not this commit.
 8. **Traceability end-to-end.** REQ → task → commit → validation, unbroken.
+9. **Action zones.** Free for code, Gated for infra (declare in `harness.yaml`),
+   Always-ask for destructive or externally-visible state.
