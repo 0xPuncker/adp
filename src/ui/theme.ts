@@ -18,6 +18,7 @@ export const sprintStyle: Record<string, { icon: string; color: string }> = {
   contract: { icon: "◇", color: theme.dim },
   build: { icon: "●", color: theme.info },
   qa: { icon: "◉", color: theme.warning },
+  evaluating: { icon: "◎", color: theme.accent },
   done: { icon: "✓", color: theme.success },
   failed: { icon: "✗", color: theme.error },
 };
