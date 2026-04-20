@@ -280,15 +280,3 @@ Single test:
 npx vitest run src/harness/engine.test.ts
 npx vitest run -t "passes on exit code 0"
 ```
-
-### Contributing
-
-1. Follow ADP on itself — `adp run` the change you want to make.
-2. Every PR must pass `typecheck`, `lint`, `test`.
-3. Commits follow Conventional Commits 1.0.0.
-
----
-
-## License
-
-MIT © bifrostlabs
