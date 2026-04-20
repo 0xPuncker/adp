@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { HarnessEngine } from "./harness/engine.js";
 import { ContextLoader } from "./context/loader.js";
 import { StateManager } from "./state/manager.js";
+import { readSessionCosts } from "./session/costs.js";
+import { saveUsageReport, loadUsageReport } from "./session/tracker.js";
 
 const [, , command, ...args] = process.argv;
 const cwd = args.includes("--cwd") ? args[args.indexOf("--cwd") + 1] : process.cwd();
@@ -15,6 +17,9 @@ async function main(): Promise<void> {
       break;
     case "status":
       await showStatus();
+      break;
+    case "usage":
+      await showUsage();
       break;
     case "guides":
       await showGuides();
@@ -63,7 +68,6 @@ async function runSensors(): Promise<void> {
 
   console.log(`\n  ${allPassed ? "\x1b[32mAll passing\x1b[0m" : "\x1b[31mFAILING\x1b[0m"}\n`);
 
-  // Also update state
   const state = new StateManager(cwd);
   const summary = results.map((r) => `${r.name} ${r.passed ? "✓" : "✗"}`).join(" ");
   await state.logSensorResult(allPassed, summary);
@@ -74,10 +78,17 @@ async function runSensors(): Promise<void> {
 async function showStatus(): Promise<void> {
   const state = new StateManager(cwd);
   const s = await state.load();
+  const session = await readSessionCosts(cwd);
 
   const sprintsDone = s.sprints.filter((sp) => sp.status === "done").length;
-  const totalCost = s.sprints.reduce((sum, sp) => sum + sp.cost.total_tokens, 0);
+  const sprintsFailed = s.sprints.filter((sp) => sp.status === "failed").length;
   const elapsed = s.startedAt ? formatElapsed(s.startedAt) : "—";
+
+  // Average score
+  const scored = s.sprints.filter((sp) => sp.score !== null);
+  const avgScore = scored.length > 0
+    ? (scored.reduce((sum, sp) => sum + (sp.score ?? 0), 0) / scored.length).toFixed(1)
+    : "—";
 
   console.log("\n  ADP Status");
   console.log("  ══════════════════════════════════════════\n");
@@ -85,8 +96,9 @@ async function showStatus(): Promise<void> {
   console.log(`  Feature:    ${s.feature ?? "—"}`);
   console.log(`  Phase:      ${s.phase ?? "—"}`);
   console.log(`  Complexity: ${s.complexity ?? "—"}`);
-  console.log(`  Sprint:     ${sprintsDone}/${s.sprints.length}`);
-  console.log(`  Cost:       ${formatTokens(totalCost)} tokens`);
+  console.log(`  Sprints:    ${sprintsDone}/${s.sprints.length}${sprintsFailed > 0 ? ` \x1b[31m(${sprintsFailed} failed)\x1b[0m` : ""}`);
+  console.log(`  Avg Score:  ${avgScore}`);
+  console.log(`  Tokens:     ${formatTokens(session.total_tokens)} (${session.messages} msgs)`);
   console.log(`  Elapsed:    ${elapsed}`);
 
   if (s.blockers.length > 0) {
@@ -103,8 +115,13 @@ async function showStatus(): Promise<void> {
       const icon = sp.status === "done" ? "\x1b[32m✓\x1b[0m"
         : sp.status === "failed" ? "\x1b[31m✗\x1b[0m"
         : "\x1b[33m▶\x1b[0m";
-      const score = sp.score !== null ? `${sp.score}/100` : "—";
-      console.log(`  ${icon} #${sp.id} ${sp.task.padEnd(30)} ${score.padEnd(8)} ${formatTokens(sp.cost.total_tokens)}`);
+      const score = sp.score !== null
+        ? (sp.score > 10 ? `${sp.score}%` : `${sp.score}/10`)
+        : "—";
+      const duration = sp.startedAt && sp.completedAt
+        ? formatDuration(sp.startedAt, sp.completedAt)
+        : "—";
+      console.log(`  ${icon} #${String(sp.id).padEnd(3)} ${sp.task.padEnd(28)} ${score.padEnd(7)} ${duration}`);
     }
   }
 
@@ -120,6 +137,64 @@ async function showStatus(): Promise<void> {
   }
 
   console.log("");
+}
+
+async function showUsage(): Promise<void> {
+  const state = new StateManager(cwd);
+  const s = await state.load();
+  const session = await readSessionCosts(cwd);
+
+  // Save report for tuning
+  const report = await saveUsageReport(cwd, s);
+
+  console.log("\n  ADP Token Usage");
+  console.log("  ══════════════════════════════════════════\n");
+
+  // Session breakdown
+  console.log("  \x1b[1mSession Totals\x1b[0m");
+  console.log(`  Input:        ${formatTokens(session.input_tokens).padEnd(12)} tokens`);
+  console.log(`  Output:       ${formatTokens(session.output_tokens).padEnd(12)} tokens`);
+  console.log(`  Cache Read:   ${formatTokens(session.cache_read_tokens).padEnd(12)} tokens`);
+  console.log(`  Cache Write:  ${formatTokens(session.cache_write_tokens).padEnd(12)} tokens`);
+  console.log(`  ─────────────────────────────`);
+  console.log(`  Total:        \x1b[1m${formatTokens(session.total_tokens).padEnd(12)}\x1b[0m tokens`);
+  console.log(`  Messages:     ${session.messages}`);
+  console.log(`  Est. Cost:    \x1b[33m${formatUsd(report.cost_estimate_usd)}\x1b[0m`);
+
+  // Per-sprint breakdown
+  if (s.sprints.length > 0) {
+    console.log("\n  \x1b[1mPer-Sprint Breakdown\x1b[0m");
+    console.log(`  ${"#".padEnd(4)}${"Task".padEnd(28)}${"Status".padEnd(10)}${"Duration".padEnd(10)}${"Score".padEnd(7)}`);
+    console.log("  ──────────────────────────────────────────────────────────────────");
+
+    for (const sp of s.sprints) {
+      const duration = sp.startedAt && sp.completedAt
+        ? formatDuration(sp.startedAt, sp.completedAt)
+        : "—";
+      const taskLabel = sp.task.length > 26 ? sp.task.slice(0, 24) + ".." : sp.task;
+      const score = sp.score !== null
+        ? (sp.score > 10 ? `${sp.score}%` : `${sp.score}/10`)
+        : "—";
+      const statusColor = sp.status === "done" ? "\x1b[32m"
+        : sp.status === "failed" ? "\x1b[31m"
+        : "\x1b[2m";
+
+      console.log(`  ${String(sp.id).padEnd(4)}${taskLabel.padEnd(28)}${statusColor}${sp.status.padEnd(10)}\x1b[0m${duration.padEnd(10)}${score}`);
+    }
+
+    // Summary
+    const totalDuration = report.pipeline.elapsed_s;
+    const avgPerSprint = totalDuration && s.sprints.length > 0
+      ? Math.floor(totalDuration / s.sprints.length)
+      : null;
+    console.log("  ──────────────────────────────────────────────────────────────────");
+    console.log(`  Total elapsed: ${totalDuration ? formatSeconds(totalDuration) : "—"}`);
+    if (avgPerSprint) {
+      console.log(`  Avg/sprint:    ${formatSeconds(avgPerSprint)}`);
+    }
+  }
+
+  console.log(`\n  \x1b[2mSaved to .adp/usage.json (use for tuning: budgets, timing, thresholds)\x1b[0m\n`);
 }
 
 async function showGuides(): Promise<void> {
@@ -196,12 +271,14 @@ async function logMessage(message: string): Promise<void> {
 function printUsage(): void {
   console.log(`
   ADP — Autonomous Development Pipeline
+  Spec-to-code sprints with feedback control
 
   Usage: adp <command> [options]
 
   Commands:
-    sensors              Run all harness sensors (typecheck, lint, test)
-    status               Show pipeline state, sprints, activity
+    status               Pipeline state, sprints, scores, token usage
+    usage                Full token breakdown & cost estimate (saves .adp/usage.json)
+    sensors              Run harness sensors (typecheck, lint, test)
     guides               List loaded guides with token counts
     start <feat> [comp]  Start pipeline for a feature
     sprint:start <task> <contract>   Begin a sprint
@@ -210,6 +287,16 @@ function printUsage(): void {
 
   Options:
     --cwd <path>         Target project directory (default: cwd)
+
+  Token Tracking:
+    The status bar and /usage command read Claude Code session files
+    (~/.claude/projects/<slug>/*.jsonl) for real-time token accounting.
+    Run "adp usage" to generate .adp/usage.json with per-sprint timing,
+    token counts, and estimated cost — use this for tuning budgets.
+
+  Interactive:
+    npm start [-- --cwd <path>]   Launch TUI dashboard
+    Shortcuts: 1=dashboard, 2=sensors, 3=usage, r=refresh, ?=help, q=quit
 `);
 }
 
@@ -218,6 +305,8 @@ function statusLabel(status: string): string {
     case "running": return "\x1b[32m▶ RUNNING\x1b[0m";
     case "paused": return "\x1b[33m⏸ PAUSED\x1b[0m";
     case "blocked": return "\x1b[31m✗ BLOCKED\x1b[0m";
+    case "completed": return "\x1b[32m✓ COMPLETED\x1b[0m";
+    case "awaiting_user": return "\x1b[33m◎ AWAITING\x1b[0m";
     default: return "\x1b[2m○ IDLE\x1b[0m";
   }
 }
@@ -226,10 +315,18 @@ function activityIcon(type: string): string {
   switch (type) {
     case "sprint_start": return "\x1b[32m→\x1b[0m";
     case "sprint_end": return "\x1b[36m←\x1b[0m";
-    case "sensor_pass": return "\x1b[32m⚡\x1b[0m";
-    case "sensor_fail": return "\x1b[31m⚡\x1b[0m";
+    case "sensor_pass": return "\x1b[32m✓\x1b[0m";
+    case "sensor_fail": return "\x1b[31m✗\x1b[0m";
     case "commit": return "\x1b[32m●\x1b[0m";
-    case "error": return "\x1b[31m✗\x1b[0m";
+    case "error": return "\x1b[31m!\x1b[0m";
+    case "init": return "\x1b[35m◆\x1b[0m";
+    case "run_start": return "\x1b[32m▶\x1b[0m";
+    case "run_end": return "\x1b[32m■\x1b[0m";
+    case "phase_start": return "\x1b[34m→\x1b[0m";
+    case "phase_end": return "\x1b[32m✓\x1b[0m";
+    case "pause": return "\x1b[33m⏸\x1b[0m";
+    case "resume": return "\x1b[32m▶\x1b[0m";
+    case "blocked": return "\x1b[31m⊘\x1b[0m";
     default: return "\x1b[2m·\x1b[0m";
   }
 }
@@ -244,12 +341,27 @@ function formatTokens(tokens: number): string {
 function formatElapsed(startedAt: string): string {
   const diff = Date.now() - new Date(startedAt).getTime();
   if (diff < 0) return "—";
-  const secs = Math.floor(diff / 1000);
+  return formatSeconds(Math.floor(diff / 1000));
+}
+
+function formatSeconds(secs: number): string {
   if (secs < 60) return `${secs}s`;
   const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}m ${secs % 60}s`;
   const hrs = Math.floor(mins / 60);
   return `${hrs}h ${mins % 60}m`;
+}
+
+function formatDuration(start: string, end: string): string {
+  const diff = new Date(end).getTime() - new Date(start).getTime();
+  if (diff <= 0) return "—";
+  return formatSeconds(Math.floor(diff / 1000));
+}
+
+function formatUsd(n: number | null): string {
+  if (n === null || n === 0) return "$0.00";
+  if (n < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
 }
 
 main().catch((err) => {
