@@ -5,7 +5,9 @@ import { HarnessEngine } from "./harness/engine.js";
 import { ContextLoader } from "./context/loader.js";
 import { StateManager } from "./state/manager.js";
 import { readSessionCosts } from "./session/costs.js";
-import { saveUsageReport, loadUsageReport } from "./session/tracker.js";
+import { saveUsageReport } from "./session/tracker.js";
+import { readSessionSprints } from "./session/sprints.js";
+import type { SessionSprint } from "./session/sprints.js";
 
 const [, , command, ...args] = process.argv;
 const cwd = args.includes("--cwd") ? args[args.indexOf("--cwd") + 1] : process.cwd();
@@ -79,12 +81,18 @@ async function showStatus(): Promise<void> {
   const state = new StateManager(cwd);
   const s = await state.load();
   const session = await readSessionCosts(cwd);
+  const sessionSprints = await readSessionSprints(cwd);
 
-  const sprintsDone = s.sprints.filter((sp) => sp.status === "done").length;
-  const sprintsFailed = s.sprints.filter((sp) => sp.status === "failed").length;
+  // Merge: state.json sprints + session-detected sprints (ground truth)
+  const mergedSprints = mergeSprintData(s.sprints, sessionSprints);
+
+  const sprintsDone = mergedSprints.filter((sp) => sp.status === "done").length;
+  const sprintsFailed = mergedSprints.filter((sp) => sp.status === "failed").length;
+  const sprintsActive = mergedSprints.filter((sp) => sp.status === "in_progress").length;
+  const sprintsPlanned = mergedSprints.filter((sp) => sp.status === "planned").length;
   const elapsed = s.startedAt ? formatElapsed(s.startedAt) : "—";
 
-  // Average score
+  // Average score (from state.json — only source with scores)
   const scored = s.sprints.filter((sp) => sp.score !== null);
   const avgScore = scored.length > 0
     ? (scored.reduce((sum, sp) => sum + (sp.score ?? 0), 0) / scored.length).toFixed(1)
@@ -96,7 +104,7 @@ async function showStatus(): Promise<void> {
   console.log(`  Feature:    ${s.feature ?? "—"}`);
   console.log(`  Phase:      ${s.phase ?? "—"}`);
   console.log(`  Complexity: ${s.complexity ?? "—"}`);
-  console.log(`  Sprints:    ${sprintsDone}/${s.sprints.length}${sprintsFailed > 0 ? ` \x1b[31m(${sprintsFailed} failed)\x1b[0m` : ""}`);
+  console.log(`  Sprints:    ${sprintsDone}/${mergedSprints.length}${sprintsFailed > 0 ? ` \x1b[31m(${sprintsFailed} failed)\x1b[0m` : ""}${sprintsActive > 0 ? ` \x1b[33m(${sprintsActive} active)\x1b[0m` : ""}${sprintsPlanned > 0 ? ` \x1b[2m(${sprintsPlanned} planned)\x1b[0m` : ""}`);
   console.log(`  Avg Score:  ${avgScore}`);
   console.log(`  Tokens:     ${formatTokens(session.total_tokens)} (${session.messages} msgs)`);
   console.log(`  Elapsed:    ${elapsed}`);
@@ -108,20 +116,21 @@ async function showStatus(): Promise<void> {
     }
   }
 
-  if (s.sprints.length > 0) {
+  if (mergedSprints.length > 0) {
     console.log("\n  Sprints");
-    console.log("  ──────────────────────────────────────────");
-    for (const sp of s.sprints) {
+    console.log("  ─────────────────────────────────────────────────────────────");
+    for (const sp of mergedSprints) {
       const icon = sp.status === "done" ? "\x1b[32m✓\x1b[0m"
         : sp.status === "failed" ? "\x1b[31m✗\x1b[0m"
-        : "\x1b[33m▶\x1b[0m";
-      const score = sp.score !== null
+        : sp.status === "in_progress" ? "\x1b[33m▶\x1b[0m"
+        : "\x1b[2m◻\x1b[0m";
+      const score = sp.score !== null && sp.score !== undefined
         ? (sp.score > 10 ? `${sp.score}%` : `${sp.score}/10`)
         : "—";
       const duration = sp.startedAt && sp.completedAt
         ? formatDuration(sp.startedAt, sp.completedAt)
         : "—";
-      console.log(`  ${icon} #${String(sp.id).padEnd(3)} ${sp.task.padEnd(28)} ${score.padEnd(7)} ${duration}`);
+      console.log(`  ${icon} #${String(sp.id).padEnd(4)}${sp.task.padEnd(40)} ${score.padEnd(7)} ${duration}`);
     }
   }
 
@@ -264,6 +273,63 @@ async function logMessage(message: string): Promise<void> {
   await state.logActivity("info", message);
   await state.save();
   console.log(`  \x1b[32m•\x1b[0m Logged\n`);
+}
+
+// ─── Sprint merge ────────────────────────────────────────────────
+
+interface MergedSprint {
+  id: number;
+  task: string;
+  status: string;
+  score: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/**
+ * Merge state.json sprints with session-detected sprints.
+ * State.json has scores/timing but may be stale. Session JSONL is ground truth for sprint list.
+ */
+function mergeSprintData(
+  stateSprints: Array<{ id: number; task: string; status: string; score: number | null; startedAt: string | null; completedAt: string | null }>,
+  sessionSprints: SessionSprint[],
+): MergedSprint[] {
+  const merged = new Map<number, MergedSprint>();
+
+  // Start with state.json (has scores, timing)
+  for (const sp of stateSprints) {
+    merged.set(sp.id, {
+      id: sp.id,
+      task: sp.task,
+      status: sp.status,
+      score: sp.score,
+      startedAt: sp.startedAt,
+      completedAt: sp.completedAt,
+    });
+  }
+
+  // Extend with session sprints (fills in any missing sprints)
+  for (const sp of sessionSprints) {
+    if (!merged.has(sp.id)) {
+      merged.set(sp.id, {
+        id: sp.id,
+        task: sp.task,
+        status: sp.status,
+        score: null,
+        startedAt: null,
+        completedAt: null,
+      });
+    } else {
+      // Session may have newer status (e.g., "in_progress" vs stale "done")
+      const existing = merged.get(sp.id)!;
+      // Only update task name if session has a better one
+      if (sp.task.length > existing.task.length) {
+        existing.task = sp.task;
+      }
+    }
+  }
+
+  return Array.from(merged.values()).sort((a, b) => a.id - b.id);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
