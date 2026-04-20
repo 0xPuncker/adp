@@ -17,6 +17,16 @@ metadata:
 
 Harness-driven autonomous development. You ARE the orchestrator.
 
+## CRITICAL RULES (never skip, even after context compaction)
+
+1. **SCORE EVERY SPRINT.** After each sprint passes sensors, self-assess 0–100
+   (or use evaluator if enabled). Write score to `.adp/state.json` sprint entry.
+   A sprint without a score is incomplete.
+2. **UPDATE state.json** after every sprint completion. Write the full sprint
+   object including `score`, `evaluator_scores`, `status: "done"`, `completedAt`.
+3. **NEVER skip sensors.** Run typecheck + lint + test after every sprint.
+4. **NEVER ask to proceed.** Execute all sprints continuously.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    HARNESS LAYER                        │
@@ -47,6 +57,7 @@ to execute every phase, run sensors, and manage state.
 | `adp run [feature]` | Execute full pipeline E2E for a feature |
 | `adp status` | Read `.adp/state.json` and report |
 | `adp verify` | Run all sensors, report pass/fail |
+| `adp evaluate` | Retroactively score unscored sprints using evaluator criteria |
 | `adp pause` | Snapshot progress to `.specs/HANDOFF.md`, stop gracefully |
 | `adp resume` | Read HANDOFF.md + state.json, resume from exact stopping point |
 
@@ -596,6 +607,35 @@ Run all sensors from `.adp/harness.yaml`:
   ✗ test       (3.4s) — 2 failures
     FAIL src/auth/validate.test.ts > should reject expired tokens
 ```
+
+---
+
+## adp evaluate
+
+Retroactively score sprints that are missing scores (e.g., after context compaction dropped the evaluator step).
+
+1. Read `.adp/state.json` — find all sprints with `score: null` and `status: "done"`.
+2. For each unscored sprint:
+   a. Identify the commit (from `sprint.commit` or `git log --grep="ADP-TASK-{id}"`)
+   b. Get the diff: `git show <commit> --stat` + `git show <commit>`
+   c. Run sensors against current state to confirm they still pass
+   d. Apply evaluator criteria from `harness.yaml`:
+      - `correctness`: Does the code do what the task specified?
+      - `completeness`: Are all parts of the task implemented?
+      - `code_quality`: Clean code, no dead code, proper error handling?
+      - `test_coverage`: Are the key paths tested?
+   e. Grade each criterion 0–100
+   f. Write verdict to `state.json`:
+      ```json
+      {
+        "score": 91,
+        "evaluator_scores": { "correctness": 94, "completeness": 90, "code_quality": 88, "test_coverage": 92 }
+      }
+      ```
+3. Report summary table of all newly scored sprints.
+4. If any sprint falls below `min_score`, flag it but do NOT revert — just log to activity.
+
+**Usage:** Run `adp evaluate` any time you see sprints with "—" scores in the dashboard.
 
 ---
 
