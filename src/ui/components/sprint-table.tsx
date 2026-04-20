@@ -26,14 +26,19 @@ export function SprintTable({ sprints, maxRows }: SprintTableProps): React.React
           </Box>
           {visible.map((sprint) => {
             const { icon, color } = sprintStyle[sprint.status] || { icon: "?", color: theme.dim };
-            const score = sprint.score !== null ? `${sprint.score}/10` : " — ";
+            // Handle both /10 scale and /100 percentage scale
+            const scoreVal = sprint.score;
+            const score = scoreVal !== null
+              ? (scoreVal > 10 ? `${scoreVal}%` : `${scoreVal}/10`)
+              : " — ";
+            const scoreGood = scoreVal !== null && (scoreVal > 10 ? scoreVal >= 80 : scoreVal >= 8);
             const task = sprint.task.length > 36 ? sprint.task.slice(0, 33) + "..." : sprint.task;
 
             return (
               <Box key={sprint.id}>
                 <Text color={theme.dim}>{String(sprint.id).padEnd(4)}</Text>
                 <Text color={color}>{`${icon} ${sprint.status}`.padEnd(12)}</Text>
-                <Text color={sprint.score !== null && sprint.score >= 8 ? theme.success : theme.text}>
+                <Text color={scoreGood ? theme.success : theme.text}>
                   {score.padEnd(7)}
                 </Text>
                 <Text color={theme.text}>{task}</Text>

@@ -70,6 +70,24 @@ As a {role}, I want to {action}, so that {benefit}.
 
 ---
 
+## Prerequisites *(optional)*
+
+External-world actions this feature requires before Execute can begin.
+Each entry MUST reference a command declared in `.adp/harness.yaml → actions:`.
+The agent will offer to run them (gated) or ask for confirmation (always_ask)
+once per session.
+
+| Action (harness key) | Needed for | Zone |
+|----------------------|------------|------|
+| `db_up` | REQ-01..REQ-05 (any DB-backed REQ) | 🟡 gated |
+| `migrate` | REQ-01 — depends on `db_up` | 🟡 gated |
+| `seed_fixtures` | REQ-04 acceptance tests | 🟡 gated |
+
+If the action doesn't exist yet, propose adding it to `harness.yaml` before
+starting Execute — do NOT run bare `docker` / `prisma` / etc. ad-hoc.
+
+---
+
 ## Out of Scope
 
 List things deliberately NOT in this feature so reviewers don't expect them.
