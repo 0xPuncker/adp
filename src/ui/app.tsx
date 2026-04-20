@@ -4,6 +4,7 @@ import { StateManager } from "../state/manager.js";
 import { HarnessEngine } from "../harness/engine.js";
 import type { PipelineState, Sprint } from "../types.js";
 import { readSessionSprints } from "../session/sprints.js";
+import { readSessionActivity } from "../session/activity.js";
 import { useTerminalSize } from "./hooks/use-terminal-size.js";
 import { theme } from "./theme.js";
 import { Header } from "./components/header.js";
@@ -58,6 +59,20 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
           }
         }
         s.sprints.sort((a, b) => a.id - b.id);
+      }
+      // Merge session activity (real-time from JSONL)
+      const sessionActivity = await readSessionActivity(cwd);
+      if (sessionActivity.length > 0) {
+        // Combine: state.json activity + session activity, deduplicated
+        const existing = new Set(s.activity.map((a) => `${a.type}:${a.message}`));
+        for (const a of sessionActivity) {
+          if (!existing.has(`${a.type}:${a.message}`)) {
+            s.activity.push(a);
+          }
+        }
+        // Sort by timestamp and keep last 50
+        s.activity.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        if (s.activity.length > 50) s.activity = s.activity.slice(-50);
       }
       setState(s);
       setLastRefresh(new Date());

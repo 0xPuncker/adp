@@ -94,9 +94,12 @@ export function StatusBar({ state, startedAt, cwd }: StatusBarProps): React.Reac
         )}
         {hasTokens ? (
           <>
-            <Text color={theme.accent}>
-              {formatTokens(sessionCost.input_tokens + sessionCost.cache_read_tokens)}↑ {formatTokens(sessionCost.output_tokens)}↓
-            </Text>
+            <Text color={theme.dim}>in:</Text>
+            <Text color={theme.accent}>{formatTokens(sessionCost.input_tokens + sessionCost.cache_read_tokens)}</Text>
+            <Text color={theme.dim}> out:</Text>
+            <Text color={theme.accent}>{formatTokens(sessionCost.output_tokens)}</Text>
+            <Text color={theme.dim}> cache:</Text>
+            <Text color={theme.accent}>{formatTokens(sessionCost.cache_read_tokens)}</Text>
             <Text color={theme.dim}> ({sessionCost.messages} msgs)</Text>
           </>
         ) : (
