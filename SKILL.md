@@ -222,6 +222,12 @@ These are injected into your context before each phase to prevent mistakes.
 
 Execute the full pipeline for a feature. This is the core loop.
 
+**IMPORTANT — Continuous execution:** Do NOT pause between sprints to ask
+"Proceed to Sprint N?" or similar. Execute ALL tasks back-to-back without
+stopping unless: (1) a sensor fails 3 times (blocker), (2) a gated action is
+denied, or (3) a clarifying question has no obvious answer. The user has
+already approved the full run by invoking `adp run`.
+
 ### Step 0: Load State
 
 Read `.adp/state.json` AND `.specs/project/STATE.md` (if present).
@@ -396,7 +402,8 @@ For each task:
      }
      ```
 
-9. **Next task** — Fresh context: re-read only files relevant to the next task.
+9. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
+   Fresh context: re-read only files relevant to the next task.
    For heavy research or parallelizable independent tasks, consider
    [Sub-Agent Delegation](#sub-agent-delegation).
 
