@@ -1,5 +1,5 @@
-import React from "react";
-import { Box, Text } from "ink";
+import React, { useState, useEffect } from "react";
+import { Box, Text, useInput } from "ink";
 import type { Sprint } from "../../types.js";
 import { theme, sprintStyle } from "../theme.js";
 import { Panel } from "./panel.js";
@@ -7,12 +7,55 @@ import { Panel } from "./panel.js";
 interface SprintTableProps {
   sprints: Sprint[];
   maxRows?: number;
+  isActive?: boolean;
 }
 
-export function SprintTable({ sprints, maxRows }: SprintTableProps): React.ReactElement {
-  const visible = maxRows ? sprints.slice(0, maxRows) : sprints;
-  const hidden = maxRows && sprints.length > maxRows ? sprints.length - maxRows : 0;
+const PAGE_SIZE = 10;
+
+export function SprintTable({ sprints, maxRows, isActive = true }: SprintTableProps): React.ReactElement {
+  const limit = maxRows ?? PAGE_SIZE;
+  const needsScroll = sprints.length > limit;
+  const [scrollOffset, setScrollOffset] = useState(0);
   const hasEval = sprints.some((s) => s.evaluator_scores !== null);
+
+  // Auto-scroll to bottom when new sprints are added
+  useEffect(() => {
+    if (sprints.length > limit) {
+      setScrollOffset(Math.max(0, sprints.length - limit));
+    }
+  }, [sprints.length]);
+
+  // Scroll with j/k or up/down when active
+  useInput((input, key) => {
+    if (!isActive || !needsScroll) return;
+
+    const maxOffset = Math.max(0, sprints.length - limit);
+
+    if (input === "j" || key.downArrow) {
+      setScrollOffset((o) => Math.min(o + 1, maxOffset));
+    }
+    if (input === "k" || key.upArrow) {
+      setScrollOffset((o) => Math.max(o - 1, 0));
+    }
+    // Page down/up
+    if (input === "J" || key.pageDown) {
+      setScrollOffset((o) => Math.min(o + limit, maxOffset));
+    }
+    if (input === "K" || key.pageUp) {
+      setScrollOffset((o) => Math.max(o - limit, 0));
+    }
+    // Home/End
+    if (input === "g") {
+      setScrollOffset(0);
+    }
+    if (input === "G") {
+      setScrollOffset(maxOffset);
+    }
+  });
+
+  const visible = sprints.slice(scrollOffset, scrollOffset + limit);
+  const totalPages = Math.ceil(sprints.length / limit);
+  const currentPage = Math.floor(scrollOffset / limit) + 1;
 
   return (
     <Panel title="Sprints" titleColor={theme.info} flexGrow={1}>
@@ -20,6 +63,7 @@ export function SprintTable({ sprints, maxRows }: SprintTableProps): React.React
         <Text color={theme.dim}>No sprints yet. Run adp to start.</Text>
       ) : (
         <Box flexDirection="column">
+          {/* Header */}
           <Box>
             <Text color={theme.dim}>
               {"#".padEnd(4)}{"Status".padEnd(12)}{"Score".padEnd(7)}
@@ -27,6 +71,15 @@ export function SprintTable({ sprints, maxRows }: SprintTableProps): React.React
               Task
             </Text>
           </Box>
+
+          {/* Scroll indicator top */}
+          {needsScroll && scrollOffset > 0 && (
+            <Box>
+              <Text color={theme.subtle}>  ▲ {scrollOffset} above</Text>
+            </Box>
+          )}
+
+          {/* Sprint rows */}
           {visible.map((sprint) => {
             const { icon, color } = sprintStyle[sprint.status] || { icon: "?", color: theme.dim };
             const scoreVal = sprint.score;
@@ -61,8 +114,23 @@ export function SprintTable({ sprints, maxRows }: SprintTableProps): React.React
               </Box>
             );
           })}
-          {hidden > 0 && (
-            <Text color={theme.dim}>  +{hidden} more...</Text>
+
+          {/* Scroll indicator bottom */}
+          {needsScroll && scrollOffset + limit < sprints.length && (
+            <Box>
+              <Text color={theme.subtle}>  ▼ {sprints.length - scrollOffset - limit} below</Text>
+            </Box>
+          )}
+
+          {/* Scroll bar / page info */}
+          {needsScroll && (
+            <Box marginTop={0}>
+              <Text color={theme.dim}>
+                {` ${sprints.length} sprints`} │ {currentPage}/{totalPages}
+                {" │ "}
+              </Text>
+              <Text color={theme.subtle}>j/k scroll  g/G top/end</Text>
+            </Box>
           )}
         </Box>
       )}
