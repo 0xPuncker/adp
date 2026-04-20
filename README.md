@@ -31,17 +31,68 @@ typecheck, test) enforced at every boundary.
 
 ## Install
 
+Install the skill once per machine. After it lands in `~/.claude/skills/adp/`,
+Claude Code picks it up automatically in every project.
+
+**macOS / Linux / WSL**
+
 ```bash
-npm install
-npm run build
+curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/install.sh | bash
 ```
 
-Register ADP as a Claude Code skill by placing `SKILL.md` where Claude Code
-discovers skills (typically `~/.claude/skills/adp/SKILL.md` or a symlink).
+**Windows (PowerShell)**
 
-Requirements:
-- Node.js ≥ 22
+```powershell
+iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/install.ps1 | iex
+```
+
+**Via npx (any platform with Node ≥ 22)**
+
+```bash
+npx github:0xPuncker/adp adp-install
+```
+
+**Manual clone**
+
+```bash
+git clone https://github.com/0xPuncker/adp.git ~/.claude/skills/adp
+```
+
+### Verify
+
+```bash
+ls ~/.claude/skills/adp/SKILL.md && echo "ok"
+```
+
+Then open Claude Code in any project and say `adp init`.
+
+### Overrides
+
+All installers honour these environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLAUDE_SKILLS_DIR` | `~/.claude/skills` | Alternate skills root |
+| `ADP_REF` | `main` | Branch, tag, or commit to install (shell/ps1 only) |
+| `ADP_REPO` | `https://github.com/0xPuncker/adp.git` | Fork to install from |
+
+### Requirements
+
+- `git` on `PATH`
 - Claude Code with skill support
+- Node.js ≥ 22 *(only if using the npx / manual dev workflows)*
+
+### Developing against a local checkout
+
+```bash
+git clone https://github.com/0xPuncker/adp.git
+cd adp
+npm install
+npm run build
+
+# Symlink your local copy into Claude Code's skills dir:
+ln -s "$(pwd)" ~/.claude/skills/adp
+```
 
 ---
 
