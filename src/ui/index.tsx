@@ -18,16 +18,19 @@ if (refIdx !== -1 && args[refIdx + 1]) {
   refreshInterval = parseInt(args[refIdx + 1], 10) || 3000;
 }
 
-// Enter alternate screen buffer for fullscreen experience
-const enterAltScreen = () => process.stdout.write("\x1b[?1049h\x1b[H");
-const exitAltScreen = () => process.stdout.write("\x1b[?1049l");
+// Fullscreen (alt screen) — disabled by default on MSYS/mintty, enable with --fullscreen
+const isMsys = !!process.env.MSYSTEM || !!process.env.TERM_PROGRAM?.match(/mintty/i);
+const forceFullscreen = args.includes("--fullscreen");
+const forceNoFullscreen = args.includes("--no-fullscreen");
+const useAltScreen = forceFullscreen || (!forceNoFullscreen && !isMsys);
 
-enterAltScreen();
-
-// Ensure we leave alt screen on any exit
-process.on("exit", exitAltScreen);
-process.on("SIGINT", () => { exitAltScreen(); process.exit(0); });
-process.on("SIGTERM", () => { exitAltScreen(); process.exit(0); });
+if (useAltScreen) {
+  process.stdout.write("\x1b[?1049h\x1b[H");
+  const exitAltScreen = () => process.stdout.write("\x1b[?1049l");
+  process.on("exit", exitAltScreen);
+  process.on("SIGINT", () => { exitAltScreen(); process.exit(0); });
+  process.on("SIGTERM", () => { exitAltScreen(); process.exit(0); });
+}
 
 const instance = render(
   <App cwd={cwd} refreshInterval={refreshInterval} />,
@@ -35,6 +38,8 @@ const instance = render(
 );
 
 instance.waitUntilExit().then(() => {
-  exitAltScreen();
+  if (useAltScreen) {
+    process.stdout.write("\x1b[?1049l");
+  }
   process.exit(0);
 });

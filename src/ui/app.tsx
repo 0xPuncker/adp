@@ -10,6 +10,7 @@ import { SprintTable } from "./components/sprint-table.js";
 import { ActivityLog } from "./components/activity-log.js";
 import { SensorPanel } from "./components/sensor-panel.js";
 import { StatusBar } from "./components/status-bar.js";
+import { UsagePanel } from "./components/usage-panel.js";
 import { CommandInput, COMMANDS } from "./components/command-input.js";
 import type { Command } from "./components/command-input.js";
 
@@ -18,7 +19,7 @@ interface AppProps {
   refreshInterval?: number;
 }
 
-export type View = "dashboard" | "sensors" | "help" | "sprint-detail";
+export type View = "dashboard" | "sensors" | "usage" | "help" | "sprint-detail";
 
 export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactElement {
   const { exit } = useApp();
@@ -70,6 +71,11 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
       case "sensors":
       case "s":
         setView("sensors");
+        break;
+
+      case "usage":
+      case "u":
+        setView("usage");
         break;
 
       case "refresh":
@@ -151,6 +157,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     }
     if (input === "1") setView("dashboard");
     if (input === "2") setView("sensors");
+    if (input === "3") setView("usage");
     if (input === "?") setView("help");
     if (input === "r") refresh();
   });
@@ -206,6 +213,10 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
 
         {view === "sensors" && (
           <SensorPanel harness={harness} cwd={cwd} />
+        )}
+
+        {view === "usage" && (
+          <UsagePanel state={state} cwd={cwd} />
         )}
 
         {view === "sprint-detail" && sprint && (
@@ -289,6 +300,10 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
                 <Text color={theme.text}>Sensors</Text>
               </Box>
               <Box>
+                <Text color={theme.accent} bold>{"3".padEnd(6)}</Text>
+                <Text color={theme.text}>Usage & Costs</Text>
+              </Box>
+              <Box>
                 <Text color={theme.accent} bold>{"r".padEnd(6)}</Text>
                 <Text color={theme.text}>Refresh</Text>
               </Box>
@@ -327,6 +342,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
       <StatusBar
         state={state}
         startedAt={state.startedAt ? new Date(state.startedAt) : null}
+        cwd={cwd}
       />
     </Box>
   );
