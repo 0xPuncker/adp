@@ -19,6 +19,7 @@ const COMMANDS = [
   { cmd: "/dashboard", alias: "/d", desc: "Switch to dashboard view" },
   { cmd: "/sensors", alias: "/s", desc: "Run and show sensors" },
   { cmd: "/usage", alias: "/u", desc: "Token usage & cost breakdown" },
+  { cmd: "/evaluate", alias: "/e", desc: "Score unscored sprints" },
   { cmd: "/refresh", alias: "/r", desc: "Force refresh pipeline state" },
   { cmd: "/resume", alias: null, desc: "Resume paused pipeline" },
   { cmd: "/pause", alias: null, desc: "Pause running pipeline" },
