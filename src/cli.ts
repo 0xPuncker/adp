@@ -475,37 +475,64 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
       }
 
       const colorCount = Object.keys(bundle.tokens.colors).length;
+      const spacingCount = Object.keys(bundle.tokens.spacing).length;
+      const screenCount = bundle.screens?.length ?? 0;
       const compCount = bundle.components.length;
+      const apiCount = bundle.apiEndpoints?.length ?? 0;
+      const totalItems = screenCount + compCount;
 
       console.log("\n  \x1b[1m\x1b[35mADP Design-First Pipeline\x1b[0m\n");
       console.log(`  Feature:    ${featureSlug}`);
       console.log(`  Source:     ${bundle.source}`);
-      console.log(`  Tokens:     ${colorCount} colors, ${Object.keys(bundle.tokens.spacing).length} spacing`);
-      console.log(`  Components: ${compCount}`);
+      console.log(`  Tokens:     ${colorCount} colors, ${spacingCount} spacing`);
+      if (bundle.tokens.typography.fontFamily) {
+        console.log(`  Typography: ${bundle.tokens.typography.fontFamily}`);
+      }
+      if (screenCount > 0) console.log(`  Screens:    ${screenCount}`);
+      if (compCount > 0) console.log(`  Components: ${compCount}`);
+      if (apiCount > 0) console.log(`  Endpoints:  ${apiCount}`);
+      if (bundle.i18n) console.log(`  i18n:       ${bundle.i18n.languages.join(", ")}`);
+      if (bundle.businessRules && bundle.businessRules.length > 0) {
+        console.log(`  Rules:      ${bundle.businessRules.length}`);
+      }
 
-      if (compCount === 0) {
-        console.log("\n  \x1b[33m⚠\x1b[0m No components found. Use Claude Design to create a prototype first.");
+      if (totalItems === 0) {
+        console.log("\n  \x1b[33m⚠\x1b[0m No screens or components found. Use Claude Design to create a prototype first.");
         console.log("  Then: cat handoff.md | adp design intake " + featureSlug + "\n");
         return;
       }
 
       // Start the pipeline
       const state = new StateManager(cwd);
-      const complexity = compCount > 10 ? "complex" : compCount > 5 ? "large" : "medium";
+      const complexity = totalItems > 10 ? "complex" : totalItems > 5 ? "large" : "medium";
       await state.startPipeline(featureSlug, complexity as "medium" | "large" | "complex");
 
-      console.log(`  Complexity: ${complexity} (${compCount} components)`);
+      console.log(`  Complexity: ${complexity} (${totalItems} screens/components)`);
       console.log("");
 
-      // Show the component task map
+      // Show the task map
       console.log("  \x1b[1mDesign → Task Map\x1b[0m");
       console.log("  ──────────────────────────────────────────");
-      console.log(`  TASK-01  Setup design tokens & shared styles`);
-      let taskNum = 2;
-      for (const comp of bundle.components) {
-        const props = comp.props?.length ? ` (${comp.props.length} props)` : "";
-        console.log(`  TASK-${String(taskNum).padStart(2, "0")}  ${comp.name} component${props}`);
-        taskNum++;
+      let taskNum = 1;
+      console.log(`  TASK-${String(taskNum).padStart(2, "0")}  Setup design tokens & shared styles`);
+      taskNum++;
+
+      if (screenCount > 0) {
+        console.log("  \x1b[2m— Screens —\x1b[0m");
+        for (const screen of bundle.screens!) {
+          const nav = screen.navId ? ` \x1b[2m[${screen.navId}]\x1b[0m` : "";
+          console.log(`  TASK-${String(taskNum).padStart(2, "0")}  ${screen.name}${nav}`);
+          taskNum++;
+        }
+      }
+
+      if (compCount > 0) {
+        console.log("  \x1b[2m— Components —\x1b[0m");
+        for (const comp of bundle.components) {
+          const props = comp.props?.length ? ` (${comp.props.length} props)` : "";
+          console.log(`  TASK-${String(taskNum).padStart(2, "0")}  ${comp.name}${props}`);
+          taskNum++;
+        }
       }
 
       console.log("");
