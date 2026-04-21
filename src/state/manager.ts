@@ -11,6 +11,8 @@ function normalizeSprint(s: any): Sprint {
     contract: s.contract ?? "",
     score: s.score ?? null,
     evaluator_scores: s.evaluator_scores ?? null,
+    requirements: Array.isArray(s.requirements) ? s.requirements : [],
+    commit: s.commit ?? null,
     cost: s.cost ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
     startedAt: s.startedAt ?? null,
     completedAt: s.completedAt ?? null,
@@ -72,6 +74,16 @@ export class StateManager {
     await writeFile(this.path, JSON.stringify(this.state, null, 2), "utf-8");
   }
 
+  // ─── Queries ──────────────────────────────────────────────────
+
+  /**
+   * Get sprints that are done but have no score (need evaluation).
+   */
+  async getUnscoredSprints(): Promise<Sprint[]> {
+    const state = await this.load();
+    return state.sprints.filter((s) => s.status === "done" && s.score === null);
+  }
+
   // ─── Mutations ─────────────────────────────────────────────────
 
   async startPipeline(feature: string, complexity: Complexity): Promise<void> {
@@ -101,6 +113,8 @@ export class StateManager {
       contract,
       score: null,
       evaluator_scores: null,
+      requirements: [],
+      commit: null,
       cost: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
       startedAt: new Date().toISOString(),
       completedAt: null,
@@ -178,6 +192,12 @@ export class StateManager {
 
   async logCommit(message: string): Promise<void> {
     await this.logActivity("commit", message);
+    await this.save();
+  }
+
+  async logEvaluator(sprintId: number, score: number, retroactive = false): Promise<void> {
+    const tag = retroactive ? " (retroactive)" : "";
+    await this.logActivity("evaluator", `Sprint ${sprintId} scored: ${score}/100${tag}`);
     await this.save();
   }
 }
