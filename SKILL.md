@@ -58,6 +58,9 @@ to execute every phase, run sensors, and manage state.
 | `adp status` | Read `.adp/state.json` and report |
 | `adp verify` | Run all sensors, report pass/fail |
 | `adp evaluate` | Retroactively score unscored sprints using evaluator criteria |
+| `adp design extract [feat]` | Extract design tokens + component inventory from project files |
+| `adp design intake <feat>` | Parse a Claude Design handoff and save as design bundle |
+| `adp design show <feat>` | Display the design bundle for a feature |
 | `adp pause` | Snapshot progress to `.specs/HANDOFF.md`, stop gracefully |
 | `adp resume` | Read HANDOFF.md + state.json, resume from exact stopping point |
 
@@ -101,6 +104,8 @@ to execute every phase, run sensors, and manage state.
 │       ├── spec.md            # Requirements with REQ-NN IDs
 │       ├── context.md         # Gray-area UX decisions (only if ambiguity found)
 │       ├── design.md          # Architecture (skipped for Small/Medium)
+│       ├── design-bundle/     # Design tokens + component inventory
+│       │   └── bundle.json    # From Claude Design handoff or project extraction
 │       ├── tasks.md           # Atomic tasks (skipped for Small)
 │       └── contracts/         # Sprint contracts (one per sprint)
 │           └── sprint-N.md    # Bidirectional agreement before building
@@ -327,12 +332,28 @@ If no ambiguity exists, skip clarification and don't create `context.md`.
 Apply the **Knowledge Verification Chain** (see [Methodology Rules](#methodology-rules))
 before recommending any library or pattern. Never fabricate.
 
+**Design input — Claude Design handoff (optional):**
+
+If the user provides a Claude Design handoff (prototype export from claude.ai):
+1. Run `DesignLoader.parseHandoff(content)` to extract tokens + component structure.
+2. Save the bundle: `.specs/features/{feature}/design-bundle/bundle.json`
+3. The prototype becomes the **source of truth** for component structure, layout, and styling.
+4. `design.md` references the bundle instead of inventing a component architecture.
+
+If no handoff exists, extract design context from the project:
+1. Run `DesignExtractor.extract()` — reads Tailwind config, CSS variables, shadcn config,
+   and scans component directories for existing components.
+2. Optionally save: `adp design extract {feature}` to persist the bundle.
+3. Use extracted tokens and component inventory to inform design decisions.
+
 **Action:** Create `.specs/features/{feature}/design.md` with:
 - Component architecture (how new modules fit existing layout)
 - Data flow + sequence for key REQs
 - Interface contracts (function signatures, endpoint shapes)
 - Reuse map — existing code referenced, at `file:line`
 - How it maps to existing patterns from guides
+- **If design bundle exists:** reference extracted tokens (colors, spacing, typography)
+  and map new components to existing component inventory
 
 ### Step 4: TASKS (skip for Small)
 

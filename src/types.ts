@@ -87,6 +87,38 @@ export interface EvaluatorConfig {
   live_test_command?: string;
 }
 
+// ─── Design Bundle ──────────────────────────────────────────────
+
+export interface DesignToken {
+  colors: Record<string, string>;
+  spacing: Record<string, string>;
+  typography: {
+    fontFamily?: string;
+    fontSize?: Record<string, string>;
+    fontWeight?: Record<string, string>;
+  };
+  radii?: Record<string, string>;
+  shadows?: Record<string, string>;
+  custom?: Record<string, unknown>;
+}
+
+export interface DesignComponent {
+  name: string;
+  description: string;
+  props?: string[];
+  file?: string;
+  variants?: string[];
+}
+
+export interface DesignBundle {
+  source: "claude-design" | "extracted" | "manual";
+  timestamp: string;
+  tokens: DesignToken;
+  components: DesignComponent[];
+  prototype?: string;
+  notes?: string;
+}
+
 export interface HarnessConfig {
   mode: ExecutionMode;
   min_score: number;
