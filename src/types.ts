@@ -4,6 +4,7 @@ export type SprintStatus = "contract" | "build" | "qa" | "evaluating" | "done" |
 export type PipelineStatus = "idle" | "running" | "paused" | "blocked";
 export type ExecutionMode = "sprint" | "continuous";
 export type EvaluatorTiming = "per_sprint" | "end_of_run" | "adaptive";
+export type ActionZone = "free" | "gated" | "always_ask";
 
 export interface Sprint {
   id: number;
@@ -12,6 +13,8 @@ export interface Sprint {
   contract: string;
   score: number | null;
   evaluator_scores: EvaluatorScores | null;
+  requirements: string[];
+  commit: string | null;
   cost: TokenCost;
   startedAt: string | null;
   completedAt: string | null;
@@ -69,6 +72,13 @@ export interface SensorConfig {
   fix_hint?: string;
 }
 
+export interface ActionConfig {
+  command: string;
+  zone: ActionZone;
+  auto_approve?: boolean;
+  depends_on?: string[];
+}
+
 export interface EvaluatorConfig {
   enabled: boolean;
   timing: EvaluatorTiming;
@@ -86,4 +96,5 @@ export interface HarnessConfig {
     };
   };
   evaluator: EvaluatorConfig;
+  actions: Record<string, ActionConfig>;
 }
