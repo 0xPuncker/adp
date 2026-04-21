@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Phase } from "../types.js";
+import { DesignLoader } from "../design/loader.js";
 
 /**
  * Loads feedforward guides from .adp/guides/ into context.
@@ -141,6 +142,36 @@ export class ContextLoader {
     return this.readOptional(
       resolve(this.cwd, ".specs", "features", featureSlug, "validation.md"),
     );
+  }
+
+  /**
+   * Load design bundle context for a feature, if available.
+   * Returns a formatted string ready for LLM context injection.
+   */
+  async loadDesignBundle(featureSlug: string): Promise<string | null> {
+    const designLoader = new DesignLoader(this.cwd);
+    const bundle = await designLoader.loadBundle(featureSlug);
+    if (!bundle) return null;
+    return designLoader.buildContext(bundle);
+  }
+
+  /**
+   * Load all context for a phase, including design bundle if available.
+   */
+  async loadFullContext(phase: Phase, featureSlug: string): Promise<string[]> {
+    const context: string[] = [];
+
+    // Phase-specific guides
+    const guides = await this.loadForPhase(phase);
+    context.push(...guides);
+
+    // Design bundle — inject during design, tasks, and execute phases
+    if (phase === "design" || phase === "tasks" || phase === "execute") {
+      const designCtx = await this.loadDesignBundle(featureSlug);
+      if (designCtx) context.push(designCtx);
+    }
+
+    return context;
   }
 
   /**
