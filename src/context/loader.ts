@@ -63,31 +63,84 @@ export class ContextLoader {
   }
 
   /**
-   * Load a spec file from .specs/
+   * Load a spec file from .specs/features/{feature}/spec.md
    */
   async loadSpec(featureSlug: string): Promise<string | null> {
-    try {
-      return await readFile(
-        resolve(this.cwd, ".specs", "features", featureSlug, "spec.md"),
-        "utf-8",
-      );
-    } catch {
-      return null;
-    }
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "features", featureSlug, "spec.md"),
+    );
   }
 
   /**
-   * Load tasks file from .specs/
+   * Load tasks file from .specs/features/{feature}/tasks.md
    */
   async loadTasks(featureSlug: string): Promise<string | null> {
-    try {
-      return await readFile(
-        resolve(this.cwd, ".specs", "features", featureSlug, "tasks.md"),
-        "utf-8",
-      );
-    } catch {
-      return null;
-    }
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "features", featureSlug, "tasks.md"),
+    );
+  }
+
+  /**
+   * Load a sprint contract from .specs/features/{feature}/contracts/sprint-N.md
+   */
+  async loadContract(featureSlug: string, sprintNumber: number): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "features", featureSlug, "contracts", `sprint-${sprintNumber}.md`),
+    );
+  }
+
+  /**
+   * Load design doc from .specs/features/{feature}/design.md
+   */
+  async loadDesign(featureSlug: string): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "features", featureSlug, "design.md"),
+    );
+  }
+
+  /**
+   * Load context doc from .specs/features/{feature}/context.md
+   */
+  async loadContext(featureSlug: string): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "features", featureSlug, "context.md"),
+    );
+  }
+
+  /**
+   * Load HANDOFF.md for resume.
+   */
+  async loadHandoff(): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "HANDOFF.md"),
+    );
+  }
+
+  /**
+   * Load project state doc from .specs/project/STATE.md
+   */
+  async loadProjectState(): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "project", "STATE.md"),
+    );
+  }
+
+  /**
+   * Load project doc from .specs/project/PROJECT.md
+   */
+  async loadProject(): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "project", "PROJECT.md"),
+    );
+  }
+
+  /**
+   * Load validation doc from .specs/features/{feature}/validation.md
+   */
+  async loadValidation(featureSlug: string): Promise<string | null> {
+    return this.readOptional(
+      resolve(this.cwd, ".specs", "features", featureSlug, "validation.md"),
+    );
   }
 
   /**
@@ -96,5 +149,13 @@ export class ContextLoader {
   estimateTokens(texts: string[]): number {
     const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
     return Math.ceil(totalChars / 4);
+  }
+
+  private async readOptional(path: string): Promise<string | null> {
+    try {
+      return await readFile(path, "utf-8");
+    } catch {
+      return null;
+    }
   }
 }
