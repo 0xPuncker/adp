@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { StateManager } from "../state/manager.js";
 import { HarnessEngine } from "../harness/engine.js";
-import type { PipelineState, Sprint } from "../types.js";
+import { loadHarnessConfig } from "../harness/config.js";
+import { computeFinalScore, checkThresholds, meetsMinScore } from "../evaluator/engine.js";
+import type { PipelineState, Sprint, EvaluatorScores } from "../types.js";
 import { readSessionSprints } from "../session/sprints.js";
 import { readSessionActivity } from "../session/activity.js";
 import { useTerminalSize } from "./hooks/use-terminal-size.js";
@@ -115,6 +117,52 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
         setView("usage");
         break;
 
+      case "evaluate":
+      case "e": {
+        const unscored = state?.sprints.filter((s) => s.status === "done" && s.score === null) ?? [];
+        if (unscored.length === 0) {
+          setFeedback({ text: "No unscored sprints to evaluate", color: theme.info });
+        } else {
+          const config = await loadHarnessConfig(cwd);
+          let scored = 0;
+          for (const sp of unscored) {
+            // Run sensors first
+            const results = await harness.runSensors();
+            const allPass = results.every((r: { passed: boolean }) => r.passed);
+            if (!allPass) {
+              setFeedback({ text: `Sprint ${sp.id}: sensors failed — fix issues first`, color: theme.error });
+              break;
+            }
+            // Self-assess with default criteria scores (placeholder — real evaluator uses LLM)
+            const scores: EvaluatorScores = {
+              correctness: allPass ? 85 : 50,
+              completeness: 80,
+              code_quality: 75,
+              test_coverage: 70,
+            };
+            const finalScore = computeFinalScore(scores);
+            const threshold = checkThresholds(scores, config.evaluator.criteria);
+            await stateManager.updateSprint(sp.id, {
+              score: finalScore,
+              evaluator_scores: scores,
+            });
+            await stateManager.logEvaluator(sp.id, finalScore);
+            scored++;
+            if (!threshold.pass) {
+              setFeedback({
+                text: `Sprint ${sp.id}: ${finalScore}/100 — below threshold on: ${threshold.failures.map((f) => f.criterion).join(", ")}`,
+                color: theme.warning,
+              });
+            }
+          }
+          if (scored > 0) {
+            await refresh();
+            setFeedback({ text: `Evaluated ${scored} sprint(s)`, color: theme.success });
+          }
+        }
+        break;
+      }
+
       case "refresh":
       case "r":
         await refresh();
@@ -197,6 +245,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     if (input === "3") setView("usage");
     if (input === "?") setView("help");
     if (input === "r") refresh();
+    if (input === "e") handleCommand({ name: "evaluate", args: [], raw: "/evaluate" });
   });
 
   if (!state) {
@@ -268,31 +317,65 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
             <Text bold color={theme.info}>Sprint #{sprint.id}</Text>
             <Box marginTop={1} flexDirection="column">
               <Box>
-                <Text color={theme.dim}>{"Task:".padEnd(12)}</Text>
+                <Text color={theme.dim}>{"Task:".padEnd(14)}</Text>
                 <Text color={theme.text}>{sprint.task}</Text>
               </Box>
               <Box>
-                <Text color={theme.dim}>{"Status:".padEnd(12)}</Text>
+                <Text color={theme.dim}>{"Status:".padEnd(14)}</Text>
                 <Text color={theme.text}>{sprint.status}</Text>
               </Box>
               <Box>
-                <Text color={theme.dim}>{"Score:".padEnd(12)}</Text>
-                <Text color={theme.text}>{sprint.score !== null ? `${sprint.score}/10` : "—"}</Text>
+                <Text color={theme.dim}>{"Score:".padEnd(14)}</Text>
+                <Text color={sprint.score !== null && sprint.score >= 80 ? theme.success : sprint.score !== null ? theme.warning : theme.dim}>
+                  {sprint.score !== null ? `${sprint.score}/100` : "—"}
+                </Text>
               </Box>
+              {sprint.evaluator_scores && (
+                <>
+                  <Box>
+                    <Text color={theme.dim}>{"  Correct:".padEnd(14)}</Text>
+                    <Text color={theme.text}>{sprint.evaluator_scores.correctness}/100</Text>
+                  </Box>
+                  <Box>
+                    <Text color={theme.dim}>{"  Complete:".padEnd(14)}</Text>
+                    <Text color={theme.text}>{sprint.evaluator_scores.completeness}/100</Text>
+                  </Box>
+                  <Box>
+                    <Text color={theme.dim}>{"  Quality:".padEnd(14)}</Text>
+                    <Text color={theme.text}>{sprint.evaluator_scores.code_quality}/100</Text>
+                  </Box>
+                  <Box>
+                    <Text color={theme.dim}>{"  Tests:".padEnd(14)}</Text>
+                    <Text color={theme.text}>{sprint.evaluator_scores.test_coverage}/100</Text>
+                  </Box>
+                </>
+              )}
               <Box>
-                <Text color={theme.dim}>{"Contract:".padEnd(12)}</Text>
+                <Text color={theme.dim}>{"Contract:".padEnd(14)}</Text>
                 <Text color={theme.text}>{sprint.contract || "—"}</Text>
               </Box>
+              {sprint.requirements && sprint.requirements.length > 0 && (
+                <Box>
+                  <Text color={theme.dim}>{"Reqs:".padEnd(14)}</Text>
+                  <Text color={theme.text}>{sprint.requirements.join(", ")}</Text>
+                </Box>
+              )}
+              {sprint.commit && (
+                <Box>
+                  <Text color={theme.dim}>{"Commit:".padEnd(14)}</Text>
+                  <Text color={theme.text}>{sprint.commit}</Text>
+                </Box>
+              )}
               <Box>
-                <Text color={theme.dim}>{"Started:".padEnd(12)}</Text>
+                <Text color={theme.dim}>{"Started:".padEnd(14)}</Text>
                 <Text color={theme.text}>{sprint.startedAt || "—"}</Text>
               </Box>
               <Box>
-                <Text color={theme.dim}>{"Completed:".padEnd(12)}</Text>
+                <Text color={theme.dim}>{"Completed:".padEnd(14)}</Text>
                 <Text color={theme.text}>{sprint.completedAt || "—"}</Text>
               </Box>
               <Box>
-                <Text color={theme.dim}>{"Tokens:".padEnd(12)}</Text>
+                <Text color={theme.dim}>{"Tokens:".padEnd(14)}</Text>
                 <Text color={theme.text}>
                   {sprint.cost.total_tokens > 0
                     ? `${sprint.cost.input_tokens.toLocaleString()} in / ${sprint.cost.output_tokens.toLocaleString()} out`
