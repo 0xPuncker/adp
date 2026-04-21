@@ -139,6 +139,8 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
               completeness: 80,
               code_quality: 75,
               test_coverage: 70,
+              security: 70,
+              resilience: 65,
             };
             const finalScore = computeFinalScore(scores);
             const threshold = checkThresholds(scores, config.evaluator.criteria);
@@ -348,6 +350,18 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
                     <Text color={theme.dim}>{"  Tests:".padEnd(14)}</Text>
                     <Text color={theme.text}>{sprint.evaluator_scores.test_coverage}/100</Text>
                   </Box>
+                  {sprint.evaluator_scores.security != null && (
+                    <Box>
+                      <Text color={theme.dim}>{"  Security:".padEnd(14)}</Text>
+                      <Text color={theme.text}>{sprint.evaluator_scores.security}/100</Text>
+                    </Box>
+                  )}
+                  {sprint.evaluator_scores.resilience != null && (
+                    <Box>
+                      <Text color={theme.dim}>{"  Resilience:".padEnd(14)}</Text>
+                      <Text color={theme.text}>{sprint.evaluator_scores.resilience}/100</Text>
+                    </Box>
+                  )}
                 </>
               )}
               <Box>

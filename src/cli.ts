@@ -132,6 +132,8 @@ async function runEvaluate(): Promise<void> {
       completeness: Math.max(criteria.completeness, 75),
       code_quality: Math.max(criteria.code_quality, 75),
       test_coverage: Math.max(criteria.test_coverage, 70),
+      ...(criteria.security != null ? { security: Math.max(criteria.security, 70) } : {}),
+      ...(criteria.resilience != null ? { resilience: Math.max(criteria.resilience, 65) } : {}),
     };
 
     const finalScore = computeFinalScore(selfScores);
