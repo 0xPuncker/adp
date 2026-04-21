@@ -13,9 +13,15 @@
 | {{FILE}} | create/modify | {{REASON}} |
 
 ## Acceptance Criteria
-1. All sensors pass (typecheck, lint, test)
+1. All sensors pass (typecheck, lint, test, audit)
 2. {{CRITERIA_1}}
 3. {{CRITERIA_2}}
+
+## Security Checklist
+- [ ] Input validated at system boundaries
+- [ ] No secrets hardcoded in source
+- [ ] Dependencies pinned and audited
+- [ ] Error responses don't leak internals
 
 ## Verification Commands
 ```bash
