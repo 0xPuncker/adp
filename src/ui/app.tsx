@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { StateManager } from "../state/manager.js";
 import { HarnessEngine } from "../harness/engine.js";
-import type { PipelineState } from "../types.js";
+import type { PipelineState, Sprint } from "../types.js";
+import { readSessionSprints } from "../session/sprints.js";
+import { readSessionActivity } from "../session/activity.js";
 import { useTerminalSize } from "./hooks/use-terminal-size.js";
 import { theme } from "./theme.js";
 import { Header } from "./components/header.js";
@@ -10,6 +12,7 @@ import { SprintTable } from "./components/sprint-table.js";
 import { ActivityLog } from "./components/activity-log.js";
 import { SensorPanel } from "./components/sensor-panel.js";
 import { StatusBar } from "./components/status-bar.js";
+import { UsagePanel } from "./components/usage-panel.js";
 import { CommandInput, COMMANDS } from "./components/command-input.js";
 import type { Command } from "./components/command-input.js";
 
@@ -18,7 +21,7 @@ interface AppProps {
   refreshInterval?: number;
 }
 
-export type View = "dashboard" | "sensors" | "help" | "sprint-detail";
+export type View = "dashboard" | "sensors" | "usage" | "help" | "sprint-detail";
 
 export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactElement {
   const { exit } = useApp();
@@ -36,6 +39,41 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
   useEffect(() => {
     const load = async () => {
       const s = await stateManager.load(true);
+      // Merge session-detected sprints (ground truth when state.json is stale)
+      const sessionSprints = await readSessionSprints(cwd);
+      if (sessionSprints.length > s.sprints.length) {
+        const stateIds = new Set(s.sprints.map((sp) => sp.id));
+        for (const ss of sessionSprints) {
+          if (!stateIds.has(ss.id)) {
+            s.sprints.push({
+              id: ss.id,
+              task: ss.task,
+              status: ss.status === "done" ? "done" : ss.status === "in_progress" ? "build" : "contract",
+              contract: "",
+              score: null,
+              evaluator_scores: null,
+              cost: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+              startedAt: null,
+              completedAt: null,
+            } as Sprint);
+          }
+        }
+        s.sprints.sort((a, b) => a.id - b.id);
+      }
+      // Merge session activity (real-time from JSONL)
+      const sessionActivity = await readSessionActivity(cwd);
+      if (sessionActivity.length > 0) {
+        // Combine: state.json activity + session activity, deduplicated
+        const existing = new Set(s.activity.map((a) => `${a.type}:${a.message}`));
+        for (const a of sessionActivity) {
+          if (!existing.has(`${a.type}:${a.message}`)) {
+            s.activity.push(a);
+          }
+        }
+        // Sort by timestamp and keep last 50
+        s.activity.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        if (s.activity.length > 50) s.activity = s.activity.slice(-50);
+      }
       setState(s);
       setLastRefresh(new Date());
     };
@@ -70,6 +108,11 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
       case "sensors":
       case "s":
         setView("sensors");
+        break;
+
+      case "usage":
+      case "u":
+        setView("usage");
         break;
 
       case "refresh":
@@ -151,6 +194,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     }
     if (input === "1") setView("dashboard");
     if (input === "2") setView("sensors");
+    if (input === "3") setView("usage");
     if (input === "?") setView("help");
     if (input === "r") refresh();
   });
@@ -189,14 +233,14 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
         {view === "dashboard" && (
           isNarrow ? (
             <Box flexDirection="column" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} />
+              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
               <Box marginTop={1}>
                 <ActivityLog activity={state.activity} limit={8} />
               </Box>
             </Box>
           ) : (
             <Box flexDirection="row" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} />
+              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
               <Box marginLeft={1}>
                 <ActivityLog activity={state.activity} limit={rows > 30 ? 16 : 10} />
               </Box>
@@ -206,6 +250,10 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
 
         {view === "sensors" && (
           <SensorPanel harness={harness} cwd={cwd} />
+        )}
+
+        {view === "usage" && (
+          <UsagePanel state={state} cwd={cwd} />
         )}
 
         {view === "sprint-detail" && sprint && (
@@ -289,6 +337,10 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
                 <Text color={theme.text}>Sensors</Text>
               </Box>
               <Box>
+                <Text color={theme.accent} bold>{"3".padEnd(6)}</Text>
+                <Text color={theme.text}>Usage & Costs</Text>
+              </Box>
+              <Box>
                 <Text color={theme.accent} bold>{"r".padEnd(6)}</Text>
                 <Text color={theme.text}>Refresh</Text>
               </Box>
@@ -327,6 +379,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
       <StatusBar
         state={state}
         startedAt={state.startedAt ? new Date(state.startedAt) : null}
+        cwd={cwd}
       />
     </Box>
   );

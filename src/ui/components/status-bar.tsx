@@ -1,6 +1,8 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { theme, statusStyle, defaultStatusStyle } from "../theme.js";
+import { readSessionCosts } from "../../session/costs.js";
+import type { SessionCost } from "../../session/costs.js";
 
 interface StatusBarProps {
   state: {
@@ -15,6 +17,7 @@ interface StatusBarProps {
     activity: unknown[];
   };
   startedAt: Date | null;
+  cwd: string;
 }
 
 function formatElapsed(ms: number): string {
@@ -33,20 +36,21 @@ function formatTokens(n: number): string {
   return `${(n / 1_000_000).toFixed(2)}M`;
 }
 
-export function StatusBar({ state, startedAt }: StatusBarProps): React.ReactElement {
+export function StatusBar({ state, startedAt, cwd }: StatusBarProps): React.ReactElement {
   const { label, color } = statusStyle[state.status] || defaultStatusStyle;
+  const [sessionCost, setSessionCost] = useState<SessionCost | null>(null);
+
+  useEffect(() => {
+    readSessionCosts(cwd).then(setSessionCost);
+    const timer = setInterval(() => {
+      readSessionCosts(cwd).then(setSessionCost);
+    }, 10000); // refresh costs every 10s
+    return () => clearInterval(timer);
+  }, [cwd]);
 
   const done = state.sprints.filter((s) => s.status === "done").length;
   const failed = state.sprints.filter((s) => s.status === "failed").length;
   const total = state.sprints.length;
-  const active = state.sprints.find(
-    (s) => s.status === "build" || s.status === "qa" || s.status === "contract"
-  );
-
-  // Total token cost across all sprints
-  const totalInput = state.sprints.reduce((sum, s) => sum + (s.cost?.input_tokens ?? 0), 0);
-  const totalOutput = state.sprints.reduce((sum, s) => sum + (s.cost?.output_tokens ?? 0), 0);
-  const totalTokens = totalInput + totalOutput;
 
   // Elapsed time
   const elapsed = startedAt ? Date.now() - startedAt.getTime() : 0;
@@ -57,8 +61,8 @@ export function StatusBar({ state, startedAt }: StatusBarProps): React.ReactElem
     ? (scored.reduce((sum, s) => sum + (s.score ?? 0), 0) / scored.length).toFixed(1)
     : null;
 
-  // Activity count
-  const activityCount = state.activity.length;
+  // Token costs from session file
+  const hasTokens = sessionCost && sessionCost.total_tokens > 0;
 
   return (
     <Box paddingX={1} justifyContent="space-between">
@@ -71,20 +75,8 @@ export function StatusBar({ state, startedAt }: StatusBarProps): React.ReactElem
           </>
         )}
         <Text color={theme.dim}> │ </Text>
-        {total > 0 ? (
-          <>
-            <Text color={theme.text}>{done}/{total} sprints</Text>
-            {failed > 0 && <Text color={theme.error}> ({failed} failed)</Text>}
-          </>
-        ) : (
-          <Text color={theme.dim}>{activityCount} events</Text>
-        )}
-        {active && (
-          <>
-            <Text color={theme.dim}> │ </Text>
-            <Text color={theme.info}>sprint active</Text>
-          </>
-        )}
+        <Text color={theme.text}>{done}/{total} sprints</Text>
+        {failed > 0 && <Text color={theme.error}> ({failed} failed)</Text>}
         {state.blockers.length > 0 && (
           <>
             <Text color={theme.dim}> │ </Text>
@@ -100,14 +92,22 @@ export function StatusBar({ state, startedAt }: StatusBarProps): React.ReactElem
             <Text color={theme.dim}> │ </Text>
           </>
         )}
-        {totalTokens > 0 && (
+        {hasTokens ? (
           <>
-            <Text color={theme.accent}>{formatTokens(totalInput)}↑ {formatTokens(totalOutput)}↓</Text>
-            <Text color={theme.dim}> │ </Text>
+            <Text color={theme.dim}>in:</Text>
+            <Text color={theme.accent}>{formatTokens(sessionCost.input_tokens + sessionCost.cache_read_tokens)}</Text>
+            <Text color={theme.dim}> out:</Text>
+            <Text color={theme.accent}>{formatTokens(sessionCost.output_tokens)}</Text>
+            <Text color={theme.dim}> cache:</Text>
+            <Text color={theme.accent}>{formatTokens(sessionCost.cache_read_tokens)}</Text>
+            <Text color={theme.dim}> ({sessionCost.messages} msgs)</Text>
           </>
+        ) : (
+          <Text color={theme.dim}>tokens: —</Text>
         )}
+        <Text color={theme.dim}> │ </Text>
         {elapsed > 0 ? (
-          <Text color={theme.dim}>{formatElapsed(elapsed)}</Text>
+          <Text color={theme.text}>{formatElapsed(elapsed)}</Text>
         ) : (
           <Text color={theme.dim}>—</Text>
         )}
