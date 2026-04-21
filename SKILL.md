@@ -77,14 +77,15 @@ to execute every phase, run sensors, and manage state.
 .adp/
 ├── state.json        # Pipeline runtime state (sprint, phase, activity)
 ├── harness.yaml      # Sensor configuration
-└── guides/           # Feedforward guides (populated by map — 7 files)
+└── guides/           # Feedforward guides (populated by map — 8 files)
     ├── stack.md
     ├── architecture.md
     ├── structure.md
     ├── conventions.md
     ├── testing.md
     ├── integrations.md
-    └── concerns.md
+    ├── concerns.md
+    └── security.md
 ```
 
 3. **Create `.specs/` structure:**
@@ -131,6 +132,8 @@ to execute every phase, run sensors, and manage state.
        completeness: 75             # Are all acceptance criteria met?
        code_quality: 70             # Clean, idiomatic, follows guides?
        test_coverage: 70            # Are the important paths tested?
+       security: 70                 # No injection, XSS, secrets, safe patterns?
+       resilience: 65               # Error recovery, timeouts, retries, degradation?
      live_test: false               # If true, evaluator launches app and interacts
      live_test_command: npm start   # Command to start the app for live testing
 
@@ -151,17 +154,27 @@ to execute every phase, run sensors, and manage state.
        zone: always_ask
    ```
 
-   Defaults by stack (sensors):
+   Defaults by stack (sensors — core):
    - TypeScript: `tsc --noEmit`, `npm run lint`, `npm test`
    - Rust: `cargo check`, `cargo clippy -- -D warnings`, `cargo test`
    - Python: `mypy .`, `ruff check .`, `pytest`
+   - Go: `go vet ./...`, `golangci-lint run`, `go test ./...`
+
+   Defaults by stack (sensors — security):
+   - TypeScript: `npm audit --audit-level=moderate`
+   - Rust: `cargo audit`
+   - Python: `pip-audit`, `bandit -r . -c pyproject.toml`
+   - Go: `govulncheck ./...`
+   - All stacks: `npx secretlint '**/*'` (secret scanning)
 
    Defaults (evaluator):
    - `enabled: true` unless user explicitly disables
    - `timing: per_sprint` for Large/Complex, `end_of_run` for Medium
    - `min_score: 80` (global threshold when evaluator is disabled)
    - `live_test: false` unless the project has a running server (Express, FastAPI, etc.)
-   - `criteria` thresholds start at 70-80; tighten after first successful feature run
+   - `criteria` thresholds start at 65-80; tighten after first successful feature run
+   - `security: 70` — catches injection, XSS, hardcoded secrets, unpinned deps
+   - `resilience: 65` — checks error handling, timeouts, retries, graceful degradation
 
    Defaults (actions) — only populated when evidence is found in the repo
    (Dockerfile, docker-compose.yaml, prisma/ dir, fly.toml, etc.). Never invent.
@@ -189,7 +202,7 @@ to execute every phase, run sensors, and manage state.
 
 ## adp map
 
-Analyze the codebase and write **7 feedforward guides** into `.adp/guides/`.
+Analyze the codebase and write **8 feedforward guides** into `.adp/guides/`.
 These are injected into your context before each phase to prevent mistakes.
 
 **Read these files** to understand the project:
@@ -243,6 +256,17 @@ These are injected into your context before each phase to prevent mistakes.
 - Known bugs, TODOs, FIXMEs with `file:line`
 - Performance hot paths
 - Risk areas to treat carefully
+
+### `.adp/guides/security.md`
+- **Dependency health:** Pinned versions in lock file? Known vulnerabilities from `npm audit` / `cargo audit` / `pip-audit`?
+- **Secret handling:** Env vars, vault references, or hardcoded? Scan for patterns: API keys, tokens, passwords in source
+- **Input validation:** Where does user input enter the system? Sanitization at boundaries?
+- **Auth & authz patterns:** How are routes protected? Token format, session handling, RBAC patterns
+- **OWASP surface:** Injection points (SQL, command, template), XSS vectors, CSRF protections, CORS config
+- **Dependency pinning:** Are versions locked in package.json/Cargo.toml/requirements.txt? Lock file committed?
+- **N+1 / performance risks:** DB queries in loops, unbounded list fetches, missing pagination
+- **Race conditions:** Shared mutable state, concurrent writes, transaction isolation
+- **Error exposure:** Stack traces, internal paths, or sensitive data in error responses
 
 **Guide rules:**
 - Specific to THIS codebase. Not generic advice.
@@ -464,7 +488,9 @@ For each task:
        "correctness": 92,
        "completeness": 88,
        "code_quality": 85,
-       "test_coverage": 80
+       "test_coverage": 80,
+       "security": 78,
+       "resilience": 72
      },
      "issues": [],
      "suggestions": []
@@ -482,13 +508,15 @@ For each task:
 
 8. **On pass — Score and commit:**
    - Final score = average of evaluator's criterion scores (NOT self-assessed).
-   - If evaluator is disabled, **self-assess** using the same 4 criteria:
+   - If evaluator is disabled, **self-assess** using the same 6 criteria:
      - Re-read the sprint contract and diff. For each criterion:
        `correctness`: Does the code actually do what the contract says?
        `completeness`: Are ALL acceptance criteria checked off?
        `code_quality`: Clean, follows guides, no dead code or hacks?
        `test_coverage`: Are happy paths + key error paths tested?
-     - Score each 0–100. Final score = average of the four.
+       `security`: No injection vectors, secrets in code, or unpinned deps?
+       `resilience`: Errors handled, timeouts set, retry logic where needed?
+     - Score each 0–100. Final score = average of all scored criteria.
      - Write `evaluator_scores` to `state.json` even in self-assess mode.
    - **Hard threshold:** If score < `harness.yaml → min_score`, sprint fails.
      Return to step 7 fix loop.
@@ -498,9 +526,9 @@ For each task:
 
      Implements: REQ-01, REQ-01.1
      {what was implemented}
-     Sensors: typecheck ✓ lint ✓ test ✓
-     Evaluator: correctness 92 | completeness 88 | quality 85 | tests 80
-     Score: 86/100
+     Sensors: typecheck ✓ lint ✓ test ✓ audit ✓
+     Evaluator: correctness 92 | completeness 88 | quality 85 | tests 80 | security 78 | resilience 72
+     Score: 84/100
      ```
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
@@ -513,8 +541,8 @@ For each task:
        "task": "TASK-01 {summary}",
        "status": "done",
        "contract": "{what was agreed}",
-       "score": 86,
-       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80 },
+       "score": 84,
+       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80, "security": 78, "resilience": 72 },
        "requirements": ["REQ-01", "REQ-01.1"],
        "commit": "abc123f",
        "cost": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0 }
@@ -548,8 +576,8 @@ For capable models (Opus 4.6+) on Medium scope, skip sprint decomposition:
   ```json
   {
     "id": 1, "task": "continuous: user-auth", "status": "done",
-    "score": 89,
-    "evaluator_scores": { "correctness": 92, "completeness": 85, "code_quality": 90, "test_coverage": 89 }
+    "score": 85,
+    "evaluator_scores": { "correctness": 92, "completeness": 85, "code_quality": 90, "test_coverage": 89, "security": 78, "resilience": 72 }
   }
   ```
 
@@ -689,17 +717,19 @@ of `adp run` if any completed sprints have `score: null`.
       - The commit diff
       - The `harness.yaml` criteria and thresholds
       Sub-agent grades using the standard evaluator prompt template.
-   e. If evaluator is disabled, **self-assess** using the 4 criteria:
+   e. If evaluator is disabled, **self-assess** using the 6 criteria:
       - `correctness`: Does the code do what the task specified?
       - `completeness`: Are all parts of the task implemented?
       - `code_quality`: Clean code, no dead code, proper error handling?
       - `test_coverage`: Are the key paths tested?
-   f. Grade each criterion 0–100. Final score = average.
+      - `security`: No injection, secrets, or unpatched deps?
+      - `resilience`: Errors handled, timeouts, retries?
+   f. Grade each criterion 0–100. Final score = average of all scored criteria.
    g. Write verdict to `state.json`:
       ```json
       {
-        "score": 91,
-        "evaluator_scores": { "correctness": 94, "completeness": 90, "code_quality": 88, "test_coverage": 92 }
+        "score": 87,
+        "evaluator_scores": { "correctness": 94, "completeness": 90, "code_quality": 88, "test_coverage": 92, "security": 80, "resilience": 75 }
       }
       ```
    h. Log activity: `evaluator: "Sprint N scored: 91/100 (retroactive)"`
@@ -952,6 +982,8 @@ You are a QA evaluator. You did NOT write this code. Review it critically.
 - Completeness (min {threshold}): Are ALL acceptance criteria addressed?
 - Code Quality (min {threshold}): Clean, idiomatic, follows project conventions?
 - Test Coverage (min {threshold}): Are important paths tested? Edge cases?
+- Security (min {threshold}): No injection, XSS, secrets in code, pinned deps, safe patterns?
+- Resilience (min {threshold}): Error recovery, timeouts, retries, graceful degradation?
 
 ## Instructions
 1. Read the contract carefully. Note every acceptance criterion.
@@ -1012,6 +1044,70 @@ validate phase (every REQ has ≥1 passing task or it's a gap)
 ```
 
 Break the chain = validation failure.
+
+---
+
+## Engineering Hardening
+
+Every sprint must pass not just functional tests but also security, performance,
+and resilience checks. These are enforced through sensors, evaluator criteria,
+and guides.
+
+### Performance
+
+During Execute, watch for these patterns and flag them:
+
+- **N+1 queries:** DB calls inside loops. Fix: batch/join/preload. The evaluator
+  checks for this under `code_quality` — repeated DB calls in a loop score ≤60.
+- **Unbounded fetches:** List endpoints without pagination. Fix: add `limit`/`offset`
+  or cursor-based pagination at system boundaries.
+- **Race conditions:** Shared mutable state without synchronization. Fix: use
+  transactions for DB writes, mutexes for in-memory state, optimistic locking
+  for concurrent updates.
+- **Memory leaks:** Event listeners never removed, growing caches without eviction,
+  unclosed streams/connections. Fix: cleanup in `finally`/`defer`/destructors.
+
+### Security
+
+Enforced by security sensors and the `security` evaluator criterion:
+
+- **Input validation at boundaries:** Every user input (HTTP body, query params,
+  CLI args, file uploads) must be validated/sanitized before processing.
+  Use schema validation (zod, pydantic, serde) not manual checks.
+- **No secrets in source:** API keys, tokens, passwords must come from env vars
+  or a secrets manager. The `secret_scan` sensor catches leaked credentials.
+- **Dependency auditing:** The `audit` sensor runs `npm audit` / `cargo audit` /
+  `pip-audit` on every sensor gate. Moderate+ vulnerabilities block the sprint.
+- **Version pinning:** Dependencies must have pinned versions in the lock file.
+  Unpinned `"latest"` or `"*"` ranges fail the security evaluator criterion.
+- **OWASP Top 10:** During code review, check for SQL injection (parameterized
+  queries only), XSS (escape output), command injection (no shell interpolation),
+  path traversal (normalize + allowlist), SSRF (allowlist outbound hosts).
+
+### Resilience
+
+Enforced by the `resilience` evaluator criterion:
+
+- **Error boundaries:** Every external call (HTTP, DB, file I/O) must have
+  error handling. Unhandled promise rejections / panics fail the criterion.
+- **Timeouts:** Network calls must have explicit timeouts. No unbounded waits.
+- **Retries with backoff:** Transient failures (429, 503, connection reset) must
+  use exponential backoff with jitter. Max 3 retries.
+- **Graceful degradation:** If a non-critical dependency fails, the system should
+  degrade (return cached data, skip optional enrichment) not crash.
+- **Circuit breakers:** For services that call multiple downstream APIs, implement
+  circuit breaker pattern to prevent cascade failures.
+
+### Contingency Planning
+
+During Design (Step 3), explicitly document:
+
+- **What if the primary approach fails?** Name a fallback for each architectural
+  decision. Record in `design.md → Contingencies`.
+- **What are the known tradeoffs?** Record in `.specs/project/STATE.md → Decisions`
+  with date, choice, and rationale.
+- **What breaks if this dependency goes down?** For each external service, document
+  the degradation path.
 
 ---
 
