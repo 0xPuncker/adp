@@ -34,6 +34,8 @@ export type {
   DesignBundle,
   DesignToken,
   DesignComponent,
+  DesignScreen,
+  DesignDataShape,
 } from "./types.js";
 export type { SensorResult } from "./harness/engine.js";
 export type { EvaluatorPromptParams, ThresholdResult } from "./evaluator/engine.js";
