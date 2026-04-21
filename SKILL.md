@@ -101,7 +101,9 @@ to execute every phase, run sensors, and manage state.
 │       ├── spec.md            # Requirements with REQ-NN IDs
 │       ├── context.md         # Gray-area UX decisions (only if ambiguity found)
 │       ├── design.md          # Architecture (skipped for Small/Medium)
-│       └── tasks.md           # Atomic tasks (skipped for Small)
+│       ├── tasks.md           # Atomic tasks (skipped for Small)
+│       └── contracts/         # Sprint contracts (one per sprint)
+│           └── sprint-N.md    # Bidirectional agreement before building
 └── quick/
     └── NNN-slug/
         ├── TASK.md            # Quick-mode task definition
@@ -390,14 +392,39 @@ STOP and create `tasks.md`. Log: `safety_valve_triggered` to activity.
 For each task:
 
 1. **Sprint contract (bidirectional):**
-   - **Generator** states: what you'll build, which files, how you'll verify it.
-   - **Evaluator review** — Spawn a sub-agent (fresh context) to review the contract:
-     - Does the contract fully address the task's acceptance criteria?
-     - Are the verification methods concrete and testable?
-     - Are there gaps between the task spec and what's proposed?
-   - If the evaluator flags issues, revise the contract before building.
+   Write the contract to `.specs/features/{feature}/contracts/sprint-N.md`:
+
+   ```markdown
+   # Sprint N: TASK-XX {summary}
+
+   ## What I'll build
+   {description of deliverables}
+
+   ## Files to touch
+   - `src/foo/bar.ts` — new: {purpose}
+   - `src/foo/baz.ts` — modify: {what changes}
+
+   ## Acceptance criteria
+   - [ ] {concrete, verifiable criterion from tasks.md}
+   - [ ] {another criterion}
+
+   ## Verification
+   - Sensor: typecheck passes with new code
+   - Sensor: test X covers Y
+   - Manual: {if applicable}
+
+   ## Requirements traced
+   REQ-01, REQ-01.1
+   ```
+
+   **Contract review** (before building):
+   - If `evaluator.enabled: true`, spawn a sub-agent to review the contract.
+     Provide: task definition from `tasks.md` + the contract you just wrote.
+     Sub-agent checks: does the contract fully address acceptance criteria?
+     Are verification methods concrete? Any gaps vs. the task spec?
+   - If the evaluator flags issues → revise the contract → re-review.
+   - If evaluator is disabled → self-review: re-read the task, confirm coverage.
    - Log to activity: `sprint_start: "Sprint N: TASK-XX {summary}"`
-   - Write contract to `.specs/features/{feature}/contracts/sprint-N.md`
 
 2. **Prerequisites** — If `spec.md → Prerequisites` lists actions not yet run
    this session, run them now (obey their Action Zone). Do not bypass a denied
@@ -455,7 +482,14 @@ For each task:
 
 8. **On pass — Score and commit:**
    - Final score = average of evaluator's criterion scores (NOT self-assessed).
-   - If evaluator is disabled, self-assess 0–100 against `min_score` threshold.
+   - If evaluator is disabled, **self-assess** using the same 4 criteria:
+     - Re-read the sprint contract and diff. For each criterion:
+       `correctness`: Does the code actually do what the contract says?
+       `completeness`: Are ALL acceptance criteria checked off?
+       `code_quality`: Clean, follows guides, no dead code or hacks?
+       `test_coverage`: Are happy paths + key error paths tested?
+     - Score each 0–100. Final score = average of the four.
+     - Write `evaluator_scores` to `state.json` even in self-assess mode.
    - **Hard threshold:** If score < `harness.yaml → min_score`, sprint fails.
      Return to step 7 fix loop.
    - Commit atomically using **Conventional Commits 1.0.0** + ADP trace tag:
@@ -501,9 +535,23 @@ For capable models (Opus 4.6+) on Medium scope, skip sprint decomposition:
 1. Load ALL task definitions at once.
 2. Build the entire feature as one continuous implementation pass.
 3. Run sensors after completion. Fix any failures.
-4. Run the **evaluator once at end-of-run** (full diff, all criteria).
+4. Run the **evaluator once at end-of-run** (full diff from feature start, all criteria).
 5. If evaluator fails any criterion → iterate on the specific issues.
 6. Commit when all criteria pass.
+
+**Scoring in continuous mode:**
+- The evaluator produces one set of scores covering the full feature.
+- Record a single sprint entry in `state.json` with `id: 1`, `task: "continuous: {feature}"`.
+- Map evaluator scores normally: `correctness`, `completeness`, `code_quality`, `test_coverage`.
+- If `evaluator.timing` is `per_sprint`, override to `end_of_run` in continuous mode.
+- `state.json` example:
+  ```json
+  {
+    "id": 1, "task": "continuous: user-auth", "status": "done",
+    "score": 89,
+    "evaluator_scores": { "correctness": 92, "completeness": 85, "code_quality": 90, "test_coverage": 89 }
+  }
+  ```
 
 This mode is faster and cheaper but offers less granular recovery.
 Use sprint mode when: scope is Large/Complex, or when the feature has
@@ -515,20 +563,23 @@ high interdependency between tasks that benefit from incremental verification.
 
 After all tasks `done`:
 
-1. **Requirement coverage check** — For each REQ in `spec.md`, confirm at least
+1. **Score safety net** — Check `state.json` for any sprints with `score: null`.
+   If found, run `adp evaluate` logic for each (see [adp evaluate](#adp-evaluate)).
+   This catches sprints that lost their evaluator step to context compaction.
+2. **Requirement coverage check** — For each REQ in `spec.md`, confirm at least
    one task cited it and that task passed. Any REQ with zero passing tasks =
    validation failure. Log gaps to `STATE.md → Blockers`.
-2. **Full sensor suite** — Run all sensors once more end-to-end.
-3. **Evaluator final pass** — If evaluator is enabled, run one final evaluation
+3. **Full sensor suite** — Run all sensors once more end-to-end.
+4. **Evaluator final pass** — If evaluator is enabled, run one final evaluation
    against the complete feature (all files changed since feature start). The
    evaluator checks holistic quality: does it all fit together? Any integration
    gaps between individually-passing sprints?
-4. **Live test (if configured)** — Launch the app with `evaluator.live_test_command`,
+5. **Live test (if configured)** — Launch the app with `evaluator.live_test_command`,
    interact with the feature's functionality, verify happy paths and error cases.
-5. **Interactive UAT (Complex only)** — Walk the user through each MVP REQ,
+6. **Interactive UAT (Complex only)** — Walk the user through each MVP REQ,
    asking them to confirm expected behavior. Record confirmations in
    `.specs/features/{feature}/validation.md`.
-6. Update state: `status: "idle"`, `phase: null`.
+7. Update state: `status: "idle"`, `phase: null`.
 
 ### Step 7: Complete
 
@@ -612,30 +663,49 @@ Run all sensors from `.adp/harness.yaml`:
 
 ## adp evaluate
 
-Retroactively score sprints that are missing scores (e.g., after context compaction dropped the evaluator step).
+Retroactively score sprints that are missing scores (e.g., after context
+compaction dropped the evaluator step). Also called **automatically** at the end
+of `adp run` if any completed sprints have `score: null`.
+
+**When this runs:**
+- **Manual:** User invokes `adp evaluate` when they see "—" scores in the dashboard.
+- **Auto (end of run):** Step 6 VALIDATE checks for unscored sprints and evaluates them
+  before reporting the final summary. This is a safety net — sprints SHOULD be scored
+  during execution, but context compaction may drop the instruction.
+- **Auto (resume):** When `adp resume` loads state, if it finds unscored done sprints,
+  evaluate them before continuing.
+
+**Process:**
 
 1. Read `.adp/state.json` — find all sprints with `score: null` and `status: "done"`.
-2. For each unscored sprint:
+2. Run sensors first — confirm the codebase is clean. If sensors fail, fix before scoring.
+3. For each unscored sprint:
    a. Identify the commit (from `sprint.commit` or `git log --grep="ADP-TASK-{id}"`)
    b. Get the diff: `git show <commit> --stat` + `git show <commit>`
-   c. Run sensors against current state to confirm they still pass
-   d. Apply evaluator criteria from `harness.yaml`:
+   c. Read the sprint contract (`.specs/features/{feature}/contracts/sprint-N.md`)
+      or the task definition from `tasks.md` if no contract exists.
+   d. **Spawn evaluator sub-agent** (if `evaluator.enabled`) with:
+      - The contract/task definition
+      - The commit diff
+      - The `harness.yaml` criteria and thresholds
+      Sub-agent grades using the standard evaluator prompt template.
+   e. If evaluator is disabled, **self-assess** using the 4 criteria:
       - `correctness`: Does the code do what the task specified?
       - `completeness`: Are all parts of the task implemented?
       - `code_quality`: Clean code, no dead code, proper error handling?
       - `test_coverage`: Are the key paths tested?
-   e. Grade each criterion 0–100
-   f. Write verdict to `state.json`:
+   f. Grade each criterion 0–100. Final score = average.
+   g. Write verdict to `state.json`:
       ```json
       {
         "score": 91,
         "evaluator_scores": { "correctness": 94, "completeness": 90, "code_quality": 88, "test_coverage": 92 }
       }
       ```
-3. Report summary table of all newly scored sprints.
-4. If any sprint falls below `min_score`, flag it but do NOT revert — just log to activity.
-
-**Usage:** Run `adp evaluate` any time you see sprints with "—" scores in the dashboard.
+   h. Log activity: `evaluator: "Sprint N scored: 91/100 (retroactive)"`
+4. Report summary table of all newly scored sprints.
+5. If any sprint falls below `min_score`, flag it in activity but do NOT revert.
+   The user can decide whether to fix or accept.
 
 ---
 
@@ -821,14 +891,33 @@ Drop accumulated context between sprints — re-read only what the next task nee
 
 ### Sub-Agent Delegation
 
-For work that would bloat the orchestrator's context, delegate to a sub-agent:
+For work that would bloat the orchestrator's context, delegate to a sub-agent.
 
+**When to delegate:**
+- **Evaluator QA** — Always a sub-agent. Fresh context prevents self-leniency.
+- **Contract review** — Sub-agent reviews the sprint contract before building.
 - **Research** — "Find all call sites of X, return a ranked list with file:line"
 - **Parallel independent tasks** — `[P]`-marked tasks with no file overlap
 - **Heavy brownfield analysis** — generating a single guide during `adp map`
 
-The orchestrator keeps planning coherence + state. Sub-agents receive only their
-task definition + the specific guide(s) relevant to their work — not the full context.
+**What to give the sub-agent:**
+- Task definition (contract, task spec, or research question)
+- Relevant guide(s) only — NOT the full context
+- `harness.yaml` criteria (for evaluator sub-agents)
+- Specific files or diffs (for review sub-agents)
+
+**What NOT to give the sub-agent:**
+- Full pipeline state or conversation history
+- Other sprint contracts or results (avoid cross-contamination)
+- Guides unrelated to their task
+
+**Sub-agent return contract:**
+- Evaluator → JSON verdict (`scores`, `issues`, `suggestions`)
+- Research → structured list (file:line, relevance ranking)
+- Parallel task → commit SHA + sensor results
+
+The orchestrator keeps planning coherence + state management.
+Sub-agents are disposable — their context is discarded after they return.
 
 ### Evaluator Agent
 
@@ -838,8 +927,11 @@ are systematically lenient (Anthropic, "Harness Design for Long-Running Apps").
 
 **When to run the evaluator:**
 - `per_sprint` — After each sprint passes sensors. Catches issues early.
+  Only applies in sprint mode. In continuous mode, falls back to `end_of_run`.
 - `end_of_run` — Once after all tasks complete. Cheaper, less granular.
+  This is the only option in continuous mode.
 - `adaptive` — Per-sprint for the first 3 sprints, then end-of-run if all pass.
+  In continuous mode, equivalent to `end_of_run`.
 
 **Evaluator prompt template:**
 
@@ -862,9 +954,15 @@ You are a QA evaluator. You did NOT write this code. Review it critically.
 - Test Coverage (min {threshold}): Are important paths tested? Edge cases?
 
 ## Instructions
-1. Read the contract carefully.
-2. Review every changed file against the contract.
-3. If live_test is enabled, launch the app and interact with the feature.
+1. Read the contract carefully. Note every acceptance criterion.
+2. Review every changed file against the contract. Check for gaps.
+3. If live_test is enabled:
+   a. Run the `live_test_command` to start the app.
+   b. Test each acceptance criterion from the contract: hit the endpoint,
+      submit the form, trigger the workflow. Verify the response/behavior.
+   c. Test at least one error case (invalid input, missing auth, bad ID).
+   d. If the app fails to start, score correctness ≤ 50 and list the startup
+      error in issues[].
 4. Score each criterion 0-100. Be skeptical — do not praise mediocre work.
 5. List concrete ISSUES (things that must be fixed to pass).
 6. List SUGGESTIONS (improvements that won't block the sprint).
