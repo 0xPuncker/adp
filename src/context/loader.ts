@@ -165,8 +165,8 @@ export class ContextLoader {
     const guides = await this.loadForPhase(phase);
     context.push(...guides);
 
-    // Design bundle — inject during design, tasks, and execute phases
-    if (phase === "design" || phase === "tasks" || phase === "execute") {
+    // Design bundle — inject during all phases when available
+    if (phase === "specify" || phase === "design" || phase === "tasks" || phase === "execute") {
       const designCtx = await this.loadDesignBundle(featureSlug);
       if (designCtx) context.push(designCtx);
     }

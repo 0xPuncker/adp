@@ -455,6 +455,65 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
       break;
     }
 
+    case "run": {
+      if (!featureSlug) {
+        console.log("  Usage: adp design run <feature-slug>");
+        console.log("  Checks for a design bundle, then starts the pipeline in design-first mode.");
+        process.exitCode = 1;
+        return;
+      }
+
+      const loader = new DesignLoader(cwd);
+      let bundle = await loader.loadBundle(featureSlug);
+
+      // If no bundle, try extracting from the project
+      if (!bundle) {
+        console.log("\n  No design bundle found. Extracting from project...\n");
+        const extractor = new DesignExtractor(cwd);
+        bundle = await extractor.extract();
+        await loader.saveBundle(featureSlug, bundle);
+      }
+
+      const colorCount = Object.keys(bundle.tokens.colors).length;
+      const compCount = bundle.components.length;
+
+      console.log("\n  \x1b[1m\x1b[35mADP Design-First Pipeline\x1b[0m\n");
+      console.log(`  Feature:    ${featureSlug}`);
+      console.log(`  Source:     ${bundle.source}`);
+      console.log(`  Tokens:     ${colorCount} colors, ${Object.keys(bundle.tokens.spacing).length} spacing`);
+      console.log(`  Components: ${compCount}`);
+
+      if (compCount === 0) {
+        console.log("\n  \x1b[33m⚠\x1b[0m No components found. Use Claude Design to create a prototype first.");
+        console.log("  Then: cat handoff.md | adp design intake " + featureSlug + "\n");
+        return;
+      }
+
+      // Start the pipeline
+      const state = new StateManager(cwd);
+      const complexity = compCount > 10 ? "complex" : compCount > 5 ? "large" : "medium";
+      await state.startPipeline(featureSlug, complexity as "medium" | "large" | "complex");
+
+      console.log(`  Complexity: ${complexity} (${compCount} components)`);
+      console.log("");
+
+      // Show the component task map
+      console.log("  \x1b[1mDesign → Task Map\x1b[0m");
+      console.log("  ──────────────────────────────────────────");
+      console.log(`  TASK-01  Setup design tokens & shared styles`);
+      let taskNum = 2;
+      for (const comp of bundle.components) {
+        const props = comp.props?.length ? ` (${comp.props.length} props)` : "";
+        console.log(`  TASK-${String(taskNum).padStart(2, "0")}  ${comp.name} component${props}`);
+        taskNum++;
+      }
+
+      console.log("");
+      console.log(`  \x1b[32m▶\x1b[0m Pipeline started in design-first mode.`);
+      console.log(`  \x1b[2mRun "adp run ${featureSlug}" in a Claude Code session to execute.\x1b[0m\n`);
+      break;
+    }
+
     default:
       console.log(`
   ADP Design — Extract and manage design tokens & components
@@ -464,12 +523,20 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
                           (Tailwind, shadcn, CSS variables, component dirs)
     show <feature>        Display the design bundle for a feature
     intake <feature>      Parse a Claude Design handoff from stdin
+    run <feature>         Start design-first pipeline (bundle → specify → execute)
 
   Usage:
     adp design extract                    # Show extracted tokens (dry run)
     adp design extract auth               # Extract & save for "auth" feature
     adp design show auth                  # Display saved bundle
     cat handoff.md | adp design intake auth  # Import Claude Design handoff
+    adp design run auth                   # Start pipeline from design bundle
+
+  Workflow:
+    1. Design in Claude Design (claude.ai)
+    2. Export handoff → cat handoff.md | adp design intake my-feature
+    3. adp design run my-feature (or "adp run my-feature" in Claude Code)
+    4. ADP generates spec from components, creates tasks, builds each one
 `);
   }
 }
