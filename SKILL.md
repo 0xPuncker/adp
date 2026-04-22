@@ -58,6 +58,10 @@ to execute every phase, run sensors, and manage state.
 | `adp status` | Read `.adp/state.json` and report |
 | `adp verify` | Run all sensors, report pass/fail |
 | `adp evaluate` | Retroactively score unscored sprints using evaluator criteria |
+| `adp design extract [feat]` | Extract design tokens + component inventory from project files |
+| `adp design intake <feat>` | Parse a Claude Design handoff and save as design bundle |
+| `adp design show <feat>` | Display the design bundle for a feature |
+| `adp design run <feat>` | Design-first pipeline: intake handoff → specify → design → tasks → execute |
 | `adp pause` | Snapshot progress to `.specs/HANDOFF.md`, stop gracefully |
 | `adp resume` | Read HANDOFF.md + state.json, resume from exact stopping point |
 
@@ -102,6 +106,8 @@ to execute every phase, run sensors, and manage state.
 │       ├── spec.md            # Requirements with REQ-NN IDs
 │       ├── context.md         # Gray-area UX decisions (only if ambiguity found)
 │       ├── design.md          # Architecture (skipped for Small/Medium)
+│       ├── design-bundle/     # Design tokens + component inventory
+│       │   └── bundle.json    # From Claude Design handoff or project extraction
 │       ├── tasks.md           # Atomic tasks (skipped for Small)
 │       └── contracts/         # Sprint contracts (one per sprint)
 │           └── sprint-N.md    # Bidirectional agreement before building
@@ -351,12 +357,28 @@ If no ambiguity exists, skip clarification and don't create `context.md`.
 Apply the **Knowledge Verification Chain** (see [Methodology Rules](#methodology-rules))
 before recommending any library or pattern. Never fabricate.
 
+**Design input — Claude Design handoff (optional):**
+
+If the user provides a Claude Design handoff (prototype export from claude.ai):
+1. Run `DesignLoader.parseHandoff(content)` to extract tokens + component structure.
+2. Save the bundle: `.specs/features/{feature}/design-bundle/bundle.json`
+3. The prototype becomes the **source of truth** for component structure, layout, and styling.
+4. `design.md` references the bundle instead of inventing a component architecture.
+
+If no handoff exists, extract design context from the project:
+1. Run `DesignExtractor.extract()` — reads Tailwind config, CSS variables, shadcn config,
+   and scans component directories for existing components.
+2. Optionally save: `adp design extract {feature}` to persist the bundle.
+3. Use extracted tokens and component inventory to inform design decisions.
+
 **Action:** Create `.specs/features/{feature}/design.md` with:
 - Component architecture (how new modules fit existing layout)
 - Data flow + sequence for key REQs
 - Interface contracts (function signatures, endpoint shapes)
 - Reuse map — existing code referenced, at `file:line`
 - How it maps to existing patterns from guides
+- **If design bundle exists:** reference extracted tokens (colors, spacing, typography)
+  and map new components to existing component inventory
 
 ### Step 4: TASKS (skip for Small)
 
@@ -634,6 +656,172 @@ Triggered by: `adp run "quick: {description}"` or auto-classified Small.
 5. Write `.specs/quick/NNN-slug/SUMMARY.md` — one paragraph + commit SHA.
 
 Skip Specify/Design/Tasks phases entirely.
+
+---
+
+## Design-First Workflow (Claude Design → ADP)
+
+Triggered by: `adp design run <feature>` or when a design bundle exists at pipeline start.
+
+This is for the **prototype → production** workflow: design in Claude Design, then
+ADP implements it. The design bundle drives the entire pipeline — components become
+requirements, tokens become the style guide, the prototype is the source of truth.
+
+### End-to-end flow
+
+```
+Claude Design (claude.ai)          ADP (Claude Code)
+─────────────────────────          ──────────────────
+1. Design UI prototype        ───→  2. adp design intake <feature>
+   - Components, layout                 Parses handoff → bundle.json
+   - Colors, typography                 Tokens + components extracted
+   - Interactive states
+                                    3. adp design run <feature>
+                                       (or: adp run <feature> — auto-detects bundle)
+                                       ┌────────────────────────────────┐
+                                       │ SPECIFY (from design bundle)   │
+                                       │  - Each component → REQ        │
+                                       │  - Tokens → style constraints  │
+                                       │  - Interactions → acceptance   │
+                                       ├────────────────────────────────┤
+                                       │ DESIGN (bundle is the design)  │
+                                       │  - Map components to project   │
+                                       │  - Identify reusable pieces    │
+                                       │  - Define file locations       │
+                                       ├────────────────────────────────┤
+                                       │ TASKS (per component)          │
+                                       │  - 1 task per component/route  │
+                                       │  - Shared tokens task first    │
+                                       │  - Tests per component         │
+                                       ├────────────────────────────────┤
+                                       │ EXECUTE (sprint per task)      │
+                                       │  - Build matching prototype    │
+                                       │  - Use extracted tokens        │
+                                       │  - Sensors verify each sprint  │
+                                       └────────────────────────────────┘
+```
+
+### Step-by-step
+
+**1. Intake the handoff**
+
+The user exports from Claude Design and provides the content. Parse it:
+
+```
+adp design intake <feature>
+```
+
+This creates `.specs/features/{feature}/design-bundle/bundle.json` with:
+- `tokens` — colors, spacing, typography, radii from the prototype
+- `components` — name, description, props, variants for each designed component
+- `prototype` — the raw handoff content (HTML/React prototype code)
+
+**2. Design-aware SPECIFY**
+
+When a design bundle exists, the Specify phase generates requirements FROM the design:
+
+```markdown
+# {Feature Name}
+
+## Complexity
+Large — {N} components from Claude Design prototype
+
+## Design Source
+Claude Design handoff — {timestamp}
+Tokens: {N} colors, {N} spacing, {N} typography
+Components: {list}
+
+## Requirements
+
+### ⭐ REQ-01: Design tokens & shared styles [MVP]
+**User Story:** As a developer, I want consistent design tokens so that all
+components match the prototype.
+| ID | Acceptance Criteria |
+|----|---------------------|
+| REQ-01.1 | WHEN rendering any component THEN colors match design tokens |
+| REQ-01.2 | WHEN rendering any component THEN typography matches design tokens |
+
+### ⭐ REQ-02: {ComponentName} component [MVP]
+**User Story:** As a user, I want {component purpose} so that {benefit}.
+| ID | Acceptance Criteria |
+|----|---------------------|
+| REQ-02.1 | WHEN {interaction} THEN {behavior from prototype} |
+| REQ-02.2 | WHEN {state change} THEN {visual change from prototype} |
+
+(one REQ per designed component)
+```
+
+**Key rules for design-first SPECIFY:**
+- **Every design component gets a REQ.** No component left unspecified.
+- **REQ-01 is always design tokens.** This is the foundation task.
+- **Acceptance criteria come from the prototype.** Interactions, states, responsive behavior.
+- **If the prototype has routes/pages**, each page gets a REQ.
+- **Don't invent requirements** not in the design. The prototype is the scope.
+
+**3. Design-aware TASKS**
+
+Task generation follows the component dependency order:
+
+```markdown
+## TASK-01: Setup design tokens and shared styles
+- [ ] **Requirement:** REQ-01
+- [ ] **Files:** tailwind.config.ts, app/globals.css, lib/design-tokens.ts
+- [ ] **Design tokens:** {colors from bundle}, {typography from bundle}
+- [ ] **Done when:** tokens match bundle.json values
+
+## TASK-02: {ComponentName} component
+- [ ] **Requirement:** REQ-02
+- [ ] **Files:** components/{path}/{ComponentName}.tsx, (test file)
+- [ ] **Design ref:** bundle component "{name}" — {description}
+- [ ] **Props:** {from bundle.components[].props}
+- [ ] **Variants:** {from bundle.components[].variants}
+- [ ] **Done when:** component renders matching prototype, props work
+```
+
+**Task ordering rules:**
+1. Tokens/shared styles first (TASK-01 always)
+2. Leaf components (no deps on other new components) next
+3. Composite components (depend on leaf components) after
+4. Pages/routes that compose components last
+5. Mark independent components as `[P]` (parallel-eligible)
+
+**4. Execute with design context**
+
+During Execute, every sprint has access to:
+- The design bundle tokens (injected via `ContextLoader.loadFullContext()`)
+- The specific component spec from the bundle
+- The prototype code (if available) as reference
+
+**Sprint contracts reference the design:**
+```markdown
+# Sprint 2: TASK-02 LoginForm component
+
+## Design reference
+Component: LoginForm (from Claude Design handoff)
+Props: onSubmit, error
+Tokens: primary (#2563eb), destructive (#dc2626), radius (0.5rem)
+
+## What I'll build
+LoginForm component matching the prototype...
+```
+
+**5. Validation against design**
+
+During VALIDATE, check:
+- Every design component has a corresponding implemented component
+- Design tokens are used (not hardcoded colors/spacing)
+- Component props match the design bundle specification
+- If prototype HTML exists, visual structure matches
+
+### Auto-detection
+
+When `adp run <feature>` starts and finds an existing design bundle at
+`.specs/features/{feature}/design-bundle/bundle.json`, it automatically
+enters design-first mode. No need for `adp design run` separately.
+
+Also, during `adp run`, if the user says "I have a Claude Design prototype for this"
+or provides handoff content, parse it with `DesignLoader.parseHandoff()` and save
+the bundle before proceeding to Specify.
 
 ---
 
