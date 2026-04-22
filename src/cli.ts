@@ -44,6 +44,10 @@ async function main(): Promise<void> {
     case "log":
       await logMessage(args.join(" "));
       break;
+    case "tui":
+    case "dashboard":
+      await launchTui();
+      break;
     case "help":
     default:
       printUsage();
@@ -355,6 +359,22 @@ async function logMessage(message: string): Promise<void> {
   console.log(`  \x1b[32m•\x1b[0m Logged\n`);
 }
 
+async function launchTui(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+
+  const here = dirname(fileURLToPath(import.meta.url));
+  const entry = join(here, "ui", "index.js");
+
+  const child = spawn(process.execPath, [entry, ...args], {
+    stdio: "inherit",
+    env: process.env,
+  });
+
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
 // ─── Sprint merge ────────────────────────────────────────────────
 
 interface MergedSprint {
@@ -425,7 +445,9 @@ function printUsage(): void {
     status               Pipeline state, sprints, scores, token usage
     usage                Full token breakdown & cost estimate (saves .adp/usage.json)
     sensors              Run harness sensors (typecheck, lint, test)
+    evaluate             Score unscored sprints (retroactive QA)
     guides               List loaded guides with token counts
+    tui                  Launch interactive TUI dashboard
     start <feat> [comp]  Start pipeline for a feature
     sprint:start <task> <contract>   Begin a sprint
     sprint:end <id> <score>          Complete a sprint with score
