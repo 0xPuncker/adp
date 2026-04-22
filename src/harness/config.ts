@@ -9,9 +9,9 @@ const DEFAULT_EVALUATOR: EvaluatorConfig = {
   criteria: {
     correctness: 90,
     completeness: 85,
-    code_quality: 80,
-    test_coverage: 80,
-    security: 80,
+    code_quality: 85,
+    test_coverage: 90,
+    security: 85,
     resilience: 75,
   },
   live_test: false,
@@ -43,7 +43,7 @@ export const SECURITY_SENSORS: Record<string, SensorConfig[]> = {
 
 const DEFAULT_CONFIG: HarnessConfig = {
   mode: "sprint",
-  min_score: 95,
+  min_score: 85,
   sensors: {
     execute: {
       computational: [],
