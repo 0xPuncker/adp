@@ -7,12 +7,12 @@ const DEFAULT_EVALUATOR: EvaluatorConfig = {
   enabled: true,
   timing: "per_sprint",
   criteria: {
-    correctness: 80,
-    completeness: 75,
-    code_quality: 70,
-    test_coverage: 70,
-    security: 70,
-    resilience: 65,
+    correctness: 90,
+    completeness: 85,
+    code_quality: 85,
+    test_coverage: 90,
+    security: 85,
+    resilience: 75,
   },
   live_test: false,
 };
@@ -43,7 +43,7 @@ export const SECURITY_SENSORS: Record<string, SensorConfig[]> = {
 
 const DEFAULT_CONFIG: HarnessConfig = {
   mode: "sprint",
-  min_score: 80,
+  min_score: 85,
   sensors: {
     execute: {
       computational: [],

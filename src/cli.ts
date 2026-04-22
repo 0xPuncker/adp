@@ -52,6 +52,10 @@ async function main(): Promise<void> {
     case "log":
       await logMessage(args.join(" "));
       break;
+    case "tui":
+    case "dashboard":
+      await launchTui();
+      break;
     case "help":
     default:
       printUsage();
@@ -643,6 +647,7 @@ function printUsage(): void {
     evaluate             Score unscored sprints (retroactive QA)
     design <sub> [feat]  Extract/show/intake design tokens & components
     guides               List loaded guides with token counts
+    tui                  Launch interactive TUI dashboard
     start <feat> [comp]  Start pipeline for a feature
     sprint:start <task> <contract>   Begin a sprint
     sprint:end <id> <score>          Complete a sprint with score
