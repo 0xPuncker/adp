@@ -10,9 +10,14 @@ import { readSessionSprints } from "./session/sprints.js";
 import type { SessionSprint } from "./session/sprints.js";
 import { loadHarnessConfig } from "./harness/config.js";
 import { computeFinalScore, checkThresholds, meetsMinScore } from "./evaluator/engine.js";
+import { DesignLoader } from "./design/loader.js";
+import { DesignExtractor } from "./design/extractor.js";
 
-const [, , command, ...args] = process.argv;
-const cwd = args.includes("--cwd") ? args[args.indexOf("--cwd") + 1] : process.cwd();
+const [, , command, ...rawArgs] = process.argv;
+const cwdIdx = rawArgs.indexOf("--cwd");
+const cwd = cwdIdx >= 0 ? rawArgs[cwdIdx + 1] : process.cwd();
+// Strip --cwd and its value from args passed to subcommands
+const args = cwdIdx >= 0 ? [...rawArgs.slice(0, cwdIdx), ...rawArgs.slice(cwdIdx + 2)] : rawArgs;
 
 async function main(): Promise<void> {
   switch (command) {
@@ -31,6 +36,9 @@ async function main(): Promise<void> {
       break;
     case "guides":
       await showGuides();
+      break;
+    case "design":
+      await runDesign(args[0], args[1]);
       break;
     case "start":
       await startPipeline(args[0], args[1]);
@@ -359,20 +367,211 @@ async function logMessage(message: string): Promise<void> {
   console.log(`  \x1b[32m•\x1b[0m Logged\n`);
 }
 
-async function launchTui(): Promise<void> {
-  const { spawn } = await import("node:child_process");
-  const { fileURLToPath } = await import("node:url");
-  const { dirname, join } = await import("node:path");
+// ─── Design ─────────────────────────────────────────────────────
 
-  const here = dirname(fileURLToPath(import.meta.url));
-  const entry = join(here, "ui", "index.js");
+async function runDesign(subcommand?: string, featureSlug?: string): Promise<void> {
+  switch (subcommand) {
+    case "extract": {
+      console.log("\n  ADP Design — Extracting tokens & components...\n");
 
-  const child = spawn(process.execPath, [entry, ...args], {
-    stdio: "inherit",
-    env: process.env,
-  });
+      const extractor = new DesignExtractor(cwd);
+      const bundle = await extractor.extract();
 
-  child.on("exit", (code) => process.exit(code ?? 0));
+      // Token summary
+      const colorCount = Object.keys(bundle.tokens.colors).length;
+      const spacingCount = Object.keys(bundle.tokens.spacing).length;
+      const compCount = bundle.components.length;
+
+      console.log("  \x1b[1mDesign Tokens\x1b[0m");
+      console.log(`  Colors:     ${colorCount}`);
+      console.log(`  Spacing:    ${spacingCount}`);
+      console.log(`  Typography: ${bundle.tokens.typography.fontFamily ?? "default"}`);
+      if (bundle.tokens.radii) {
+        console.log(`  Radii:      ${Object.keys(bundle.tokens.radii).length}`);
+      }
+
+      if (compCount > 0) {
+        console.log(`\n  \x1b[1mComponents (${compCount})\x1b[0m`);
+        for (const comp of bundle.components) {
+          const props = comp.props?.length ? ` (${comp.props.length} props)` : "";
+          const variants = comp.variants?.length ? ` [${comp.variants.join(", ")}]` : "";
+          console.log(`  • ${comp.name.padEnd(24)} ${comp.file ?? ""}${props}${variants}`);
+        }
+      }
+
+      // Save if feature slug provided
+      if (featureSlug) {
+        const loader = new DesignLoader(cwd);
+        const path = await loader.saveBundle(featureSlug, bundle);
+        console.log(`\n  \x1b[32m✓\x1b[0m Saved to ${path}\n`);
+      } else {
+        console.log(`\n  \x1b[2mTip: adp design extract <feature-slug> to save as bundle\x1b[0m\n`);
+      }
+      break;
+    }
+
+    case "show": {
+      if (!featureSlug) {
+        console.log("  Usage: adp design show <feature-slug>");
+        process.exitCode = 1;
+        return;
+      }
+
+      const loader = new DesignLoader(cwd);
+      const bundle = await loader.loadBundle(featureSlug);
+      if (!bundle) {
+        console.log(`\n  No design bundle for "${featureSlug}".`);
+        console.log(`  Run: adp design extract ${featureSlug}\n`);
+        return;
+      }
+
+      console.log("\n" + loader.buildContext(bundle) + "\n");
+      break;
+    }
+
+    case "intake": {
+      if (!featureSlug) {
+        console.log("  Usage: adp design intake <feature-slug>");
+        console.log("  Reads a Claude Design handoff from stdin.");
+        process.exitCode = 1;
+        return;
+      }
+
+      // Read handoff from stdin
+      const chunks: Buffer[] = [];
+      for await (const chunk of process.stdin) {
+        chunks.push(chunk);
+      }
+      const content = Buffer.concat(chunks).toString("utf-8").trim();
+
+      if (!content) {
+        console.log("  No input received. Pipe a handoff: cat handoff.md | adp design intake my-feature");
+        process.exitCode = 1;
+        return;
+      }
+
+      const loader = new DesignLoader(cwd);
+      const bundle = loader.parseHandoff(content);
+
+      const path = await loader.saveBundle(featureSlug, bundle);
+      console.log(`\n  \x1b[32m✓\x1b[0m Parsed Claude Design handoff`);
+      console.log(`  Tokens: ${Object.keys(bundle.tokens.colors).length} colors, ${Object.keys(bundle.tokens.spacing).length} spacing`);
+      console.log(`  Components: ${bundle.components.length}`);
+      console.log(`  Saved to: ${path}\n`);
+      break;
+    }
+
+    case "run": {
+      if (!featureSlug) {
+        console.log("  Usage: adp design run <feature-slug>");
+        console.log("  Checks for a design bundle, then starts the pipeline in design-first mode.");
+        process.exitCode = 1;
+        return;
+      }
+
+      const loader = new DesignLoader(cwd);
+      let bundle = await loader.loadBundle(featureSlug);
+
+      // If no bundle, try extracting from the project
+      if (!bundle) {
+        console.log("\n  No design bundle found. Extracting from project...\n");
+        const extractor = new DesignExtractor(cwd);
+        bundle = await extractor.extract();
+        await loader.saveBundle(featureSlug, bundle);
+      }
+
+      const colorCount = Object.keys(bundle.tokens.colors).length;
+      const spacingCount = Object.keys(bundle.tokens.spacing).length;
+      const screenCount = bundle.screens?.length ?? 0;
+      const compCount = bundle.components.length;
+      const apiCount = bundle.apiEndpoints?.length ?? 0;
+      const totalItems = screenCount + compCount;
+
+      console.log("\n  \x1b[1m\x1b[35mADP Design-First Pipeline\x1b[0m\n");
+      console.log(`  Feature:    ${featureSlug}`);
+      console.log(`  Source:     ${bundle.source}`);
+      console.log(`  Tokens:     ${colorCount} colors, ${spacingCount} spacing`);
+      if (bundle.tokens.typography.fontFamily) {
+        console.log(`  Typography: ${bundle.tokens.typography.fontFamily}`);
+      }
+      if (screenCount > 0) console.log(`  Screens:    ${screenCount}`);
+      if (compCount > 0) console.log(`  Components: ${compCount}`);
+      if (apiCount > 0) console.log(`  Endpoints:  ${apiCount}`);
+      if (bundle.i18n) console.log(`  i18n:       ${bundle.i18n.languages.join(", ")}`);
+      if (bundle.businessRules && bundle.businessRules.length > 0) {
+        console.log(`  Rules:      ${bundle.businessRules.length}`);
+      }
+
+      if (totalItems === 0) {
+        console.log("\n  \x1b[33m⚠\x1b[0m No screens or components found. Use Claude Design to create a prototype first.");
+        console.log("  Then: cat handoff.md | adp design intake " + featureSlug + "\n");
+        return;
+      }
+
+      // Start the pipeline
+      const state = new StateManager(cwd);
+      const complexity = totalItems > 10 ? "complex" : totalItems > 5 ? "large" : "medium";
+      await state.startPipeline(featureSlug, complexity as "medium" | "large" | "complex");
+
+      console.log(`  Complexity: ${complexity} (${totalItems} screens/components)`);
+      console.log("");
+
+      // Show the task map
+      console.log("  \x1b[1mDesign → Task Map\x1b[0m");
+      console.log("  ──────────────────────────────────────────");
+      let taskNum = 1;
+      console.log(`  TASK-${String(taskNum).padStart(2, "0")}  Setup design tokens & shared styles`);
+      taskNum++;
+
+      if (screenCount > 0) {
+        console.log("  \x1b[2m— Screens —\x1b[0m");
+        for (const screen of bundle.screens!) {
+          const nav = screen.navId ? ` \x1b[2m[${screen.navId}]\x1b[0m` : "";
+          console.log(`  TASK-${String(taskNum).padStart(2, "0")}  ${screen.name}${nav}`);
+          taskNum++;
+        }
+      }
+
+      if (compCount > 0) {
+        console.log("  \x1b[2m— Components —\x1b[0m");
+        for (const comp of bundle.components) {
+          const props = comp.props?.length ? ` (${comp.props.length} props)` : "";
+          console.log(`  TASK-${String(taskNum).padStart(2, "0")}  ${comp.name}${props}`);
+          taskNum++;
+        }
+      }
+
+      console.log("");
+      console.log(`  \x1b[32m▶\x1b[0m Pipeline started in design-first mode.`);
+      console.log(`  \x1b[2mRun "adp run ${featureSlug}" in a Claude Code session to execute.\x1b[0m\n`);
+      break;
+    }
+
+    default:
+      console.log(`
+  ADP Design — Extract and manage design tokens & components
+
+  Subcommands:
+    extract [feature]     Extract tokens + components from project files
+                          (Tailwind, shadcn, CSS variables, component dirs)
+    show <feature>        Display the design bundle for a feature
+    intake <feature>      Parse a Claude Design handoff from stdin
+    run <feature>         Start design-first pipeline (bundle → specify → execute)
+
+  Usage:
+    adp design extract                    # Show extracted tokens (dry run)
+    adp design extract auth               # Extract & save for "auth" feature
+    adp design show auth                  # Display saved bundle
+    cat handoff.md | adp design intake auth  # Import Claude Design handoff
+    adp design run auth                   # Start pipeline from design bundle
+
+  Workflow:
+    1. Design in Claude Design (claude.ai)
+    2. Export handoff → cat handoff.md | adp design intake my-feature
+    3. adp design run my-feature (or "adp run my-feature" in Claude Code)
+    4. ADP generates spec from components, creates tasks, builds each one
+`);
+  }
 }
 
 // ─── Sprint merge ────────────────────────────────────────────────
@@ -446,6 +645,7 @@ function printUsage(): void {
     usage                Full token breakdown & cost estimate (saves .adp/usage.json)
     sensors              Run harness sensors (typecheck, lint, test)
     evaluate             Score unscored sprints (retroactive QA)
+    design <sub> [feat]  Extract/show/intake design tokens & components
     guides               List loaded guides with token counts
     tui                  Launch interactive TUI dashboard
     start <feat> [comp]  Start pipeline for a feature
