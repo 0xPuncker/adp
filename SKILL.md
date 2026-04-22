@@ -115,7 +115,7 @@ to execute every phase, run sensors, and manage state.
 
    ```yaml
    mode: sprint                      # "sprint" (decomposed) or "continuous" (single-pass)
-   min_score: 80                     # Hard threshold — sprint fails below this
+   min_score: 95                     # Hard threshold — sprint fails below this
 
    sensors:
      typecheck: { command: tsc --noEmit }
@@ -128,12 +128,12 @@ to execute every phase, run sensors, and manage state.
      enabled: true                   # Separate agent judges each sprint
      timing: per_sprint              # "per_sprint" | "end_of_run" | "adaptive"
      criteria:                       # Hard-fail thresholds (0-100 each)
-       correctness: 80              # Does it actually work as specified?
-       completeness: 75             # Are all acceptance criteria met?
-       code_quality: 70             # Clean, idiomatic, follows guides?
-       test_coverage: 70            # Are the important paths tested?
-       security: 70                 # No injection, XSS, secrets, safe patterns?
-       resilience: 65               # Error recovery, timeouts, retries, degradation?
+       correctness: 90              # Does it actually work as specified?
+       completeness: 85             # Are all acceptance criteria met?
+       code_quality: 80             # Clean, idiomatic, follows guides?
+       test_coverage: 80            # Are the important paths tested?
+       security: 80                 # No injection, XSS, secrets, safe patterns?
+       resilience: 75               # Error recovery, timeouts, retries, degradation?
      live_test: false               # If true, evaluator launches app and interacts
      live_test_command: npm start   # Command to start the app for live testing
 
@@ -170,11 +170,11 @@ to execute every phase, run sensors, and manage state.
    Defaults (evaluator):
    - `enabled: true` unless user explicitly disables
    - `timing: per_sprint` for Large/Complex, `end_of_run` for Medium
-   - `min_score: 80` (global threshold when evaluator is disabled)
+   - `min_score: 95` (global threshold when evaluator is disabled)
    - `live_test: false` unless the project has a running server (Express, FastAPI, etc.)
-   - `criteria` thresholds start at 65-80; tighten after first successful feature run
-   - `security: 70` — catches injection, XSS, hardcoded secrets, unpinned deps
-   - `resilience: 65` — checks error handling, timeouts, retries, graceful degradation
+   - `criteria` thresholds start at 75-90; tighten after first successful feature run
+   - `security: 80` — catches injection, XSS, hardcoded secrets, unpinned deps
+   - `resilience: 75` — checks error handling, timeouts, retries, graceful degradation
 
    Defaults (actions) — only populated when evidence is found in the repo
    (Dockerfile, docker-compose.yaml, prisma/ dir, fly.toml, etc.). Never invent.
