@@ -25,6 +25,8 @@ export interface EvaluatorScores {
   completeness: number;
   code_quality: number;
   test_coverage: number;
+  security?: number;
+  resilience?: number;
 }
 
 export interface EvaluatorVerdict {
