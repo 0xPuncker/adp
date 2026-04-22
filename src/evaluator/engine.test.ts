@@ -24,6 +24,7 @@ describe("buildEvaluatorPrompt", () => {
     expect(prompt).toContain("Completeness (min 85)");
     expect(prompt).toContain("+function login() {}");
     expect(prompt).not.toContain("live_test");
+    expect(prompt).not.toContain("Security");
   });
 
   it("includes live test instructions when enabled", () => {
@@ -38,6 +39,21 @@ describe("buildEvaluatorPrompt", () => {
 
     expect(prompt).toContain("npm run dev");
     expect(prompt).toContain("startup error");
+  });
+
+  it("includes security and resilience criteria when configured", () => {
+    const prompt = buildEvaluatorPrompt({
+      contract: "Build API",
+      diff: "diff",
+      sensorOutput: "ok",
+      criteria: { correctness: 80, completeness: 80, code_quality: 80, test_coverage: 80, security: 70, resilience: 65 },
+      liveTest: false,
+    });
+
+    expect(prompt).toContain("Security (min 70)");
+    expect(prompt).toContain("Resilience (min 65)");
+    expect(prompt).toContain('"security": <0-100>');
+    expect(prompt).toContain('"resilience": <0-100>');
   });
 });
 
@@ -72,6 +88,34 @@ describe("parseEvaluatorVerdict", () => {
 
   it("throws on missing scores", () => {
     expect(() => parseEvaluatorVerdict('{"verdict":"pass"}')).toThrow("missing scores");
+  });
+
+  it("parses security and resilience when present", () => {
+    const raw = JSON.stringify({
+      sprint: 3,
+      verdict: "pass",
+      scores: { correctness: 90, completeness: 85, code_quality: 80, test_coverage: 75, security: 88, resilience: 72 },
+      issues: [],
+      suggestions: [],
+    });
+
+    const verdict = parseEvaluatorVerdict(raw);
+    expect(verdict.scores.security).toBe(88);
+    expect(verdict.scores.resilience).toBe(72);
+  });
+
+  it("omits security/resilience when not in response", () => {
+    const raw = JSON.stringify({
+      sprint: 1,
+      verdict: "pass",
+      scores: { correctness: 90, completeness: 85, code_quality: 80, test_coverage: 75 },
+      issues: [],
+      suggestions: [],
+    });
+
+    const verdict = parseEvaluatorVerdict(raw);
+    expect(verdict.scores.security).toBeUndefined();
+    expect(verdict.scores.resilience).toBeUndefined();
   });
 });
 
@@ -112,6 +156,24 @@ describe("checkThresholds", () => {
     );
     expect(result.pass).toBe(true);
   });
+
+  it("checks security and resilience when both score and threshold present", () => {
+    const result = checkThresholds(
+      { correctness: 90, completeness: 90, code_quality: 90, test_coverage: 90, security: 60, resilience: 80 },
+      { correctness: 80, completeness: 80, code_quality: 80, test_coverage: 80, security: 70, resilience: 65 },
+    );
+    expect(result.pass).toBe(false);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0].criterion).toBe("security");
+  });
+
+  it("skips security/resilience when not in criteria", () => {
+    const result = checkThresholds(
+      { correctness: 90, completeness: 90, code_quality: 90, test_coverage: 90, security: 50 },
+      { correctness: 80, completeness: 80, code_quality: 80, test_coverage: 80 },
+    );
+    expect(result.pass).toBe(true);
+  });
 });
 
 describe("computeFinalScore", () => {
@@ -121,6 +183,21 @@ describe("computeFinalScore", () => {
 
   it("rounds to nearest integer", () => {
     expect(computeFinalScore({ correctness: 91, completeness: 87, code_quality: 83, test_coverage: 80 })).toBe(85);
+  });
+
+  it("averages six criteria when security and resilience present", () => {
+    expect(computeFinalScore({
+      correctness: 90, completeness: 90, code_quality: 90, test_coverage: 90,
+      security: 90, resilience: 90,
+    })).toBe(90);
+  });
+
+  it("averages five criteria when only security present", () => {
+    // (90+80+80+80+70) / 5 = 400/5 = 80
+    expect(computeFinalScore({
+      correctness: 90, completeness: 80, code_quality: 80, test_coverage: 80,
+      security: 70,
+    })).toBe(80);
   });
 });
 

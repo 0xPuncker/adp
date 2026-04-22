@@ -11,8 +11,34 @@ const DEFAULT_EVALUATOR: EvaluatorConfig = {
     completeness: 75,
     code_quality: 70,
     test_coverage: 70,
+    security: 70,
+    resilience: 65,
   },
   live_test: false,
+};
+
+/**
+ * Security sensor templates per stack. Used by SKILL.md during `adp init`
+ * to populate harness.yaml with stack-appropriate security sensors.
+ */
+export const SECURITY_SENSORS: Record<string, SensorConfig[]> = {
+  typescript: [
+    { name: "audit", command: "npm audit --audit-level=moderate", fix_hint: "Run npm audit fix or update vulnerable packages" },
+    { name: "secret_scan", command: "npx secretlint '**/*'", fix_hint: "Remove secrets from source — use env vars or a vault" },
+  ],
+  rust: [
+    { name: "audit", command: "cargo audit", fix_hint: "Update vulnerable crates: cargo update" },
+    { name: "secret_scan", command: "npx secretlint '**/*'", fix_hint: "Remove secrets from source — use env vars or a vault" },
+  ],
+  python: [
+    { name: "audit", command: "pip-audit", fix_hint: "Update vulnerable packages: pip install --upgrade" },
+    { name: "secret_scan", command: "npx secretlint '**/*'", fix_hint: "Remove secrets from source — use env vars or a vault" },
+    { name: "security_lint", command: "bandit -r . -c pyproject.toml", fix_hint: "Fix security issues flagged by bandit" },
+  ],
+  go: [
+    { name: "audit", command: "govulncheck ./...", fix_hint: "Update vulnerable modules: go get -u" },
+    { name: "secret_scan", command: "npx secretlint '**/*'", fix_hint: "Remove secrets from source — use env vars or a vault" },
+  ],
 };
 
 const DEFAULT_CONFIG: HarnessConfig = {
@@ -65,6 +91,8 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
         completeness: evalCfg?.criteria?.completeness ?? DEFAULT_EVALUATOR.criteria.completeness,
         code_quality: evalCfg?.criteria?.code_quality ?? DEFAULT_EVALUATOR.criteria.code_quality,
         test_coverage: evalCfg?.criteria?.test_coverage ?? DEFAULT_EVALUATOR.criteria.test_coverage,
+        security: evalCfg?.criteria?.security ?? DEFAULT_EVALUATOR.criteria.security,
+        resilience: evalCfg?.criteria?.resilience ?? DEFAULT_EVALUATOR.criteria.resilience,
       },
       live_test: evalCfg?.live_test ?? DEFAULT_EVALUATOR.live_test,
       live_test_command: evalCfg?.live_test_command,

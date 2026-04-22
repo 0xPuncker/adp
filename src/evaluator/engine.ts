@@ -33,6 +33,16 @@ export interface ThresholdResult {
 export function buildEvaluatorPrompt(params: EvaluatorPromptParams): string {
   const { contract, diff, sensorOutput, criteria, liveTest, liveTestCommand } = params;
 
+  const securityLine = criteria.security != null
+    ? `\n- Security (min ${criteria.security}): No injection, XSS, secrets in code, pinned deps, safe patterns?`
+    : "";
+  const resilienceLine = criteria.resilience != null
+    ? `\n- Resilience (min ${criteria.resilience}): Error recovery, timeouts, retries, graceful degradation?`
+    : "";
+
+  const securityScoreField = criteria.security != null ? `, "security": <0-100>` : "";
+  const resilienceScoreField = criteria.resilience != null ? `, "resilience": <0-100>` : "";
+
   return `You are a QA evaluator. You did NOT write this code. Review it critically.
 
 ## Sprint Contract
@@ -48,7 +58,7 @@ ${sensorOutput}
 - Correctness (min ${criteria.correctness}): Does the implementation match the contract?
 - Completeness (min ${criteria.completeness}): Are ALL acceptance criteria addressed?
 - Code Quality (min ${criteria.code_quality}): Clean, idiomatic, follows project conventions?
-- Test Coverage (min ${criteria.test_coverage}): Are important paths tested? Edge cases?
+- Test Coverage (min ${criteria.test_coverage}): Are important paths tested? Edge cases?${securityLine}${resilienceLine}
 
 ## Instructions
 1. Read the contract carefully. Note every acceptance criterion.
@@ -66,7 +76,7 @@ Output JSON only:
 {
   "sprint": <number>,
   "verdict": "pass" | "fail",
-  "scores": { "correctness": <0-100>, "completeness": <0-100>, "code_quality": <0-100>, "test_coverage": <0-100> },
+  "scores": { "correctness": <0-100>, "completeness": <0-100>, "code_quality": <0-100>, "test_coverage": <0-100>${securityScoreField}${resilienceScoreField} },
   "issues": ["..."],
   "suggestions": ["..."]
 }`;
@@ -91,15 +101,19 @@ export function parseEvaluatorVerdict(raw: string): EvaluatorVerdict {
     throw new Error("Invalid evaluator verdict: missing scores");
   }
 
+  const scores: EvaluatorScores = {
+    correctness: parsed.scores.correctness,
+    completeness: parsed.scores.completeness ?? 0,
+    code_quality: parsed.scores.code_quality ?? 0,
+    test_coverage: parsed.scores.test_coverage ?? 0,
+  };
+  if (typeof parsed.scores.security === "number") scores.security = parsed.scores.security;
+  if (typeof parsed.scores.resilience === "number") scores.resilience = parsed.scores.resilience;
+
   return {
     sprint: parsed.sprint ?? 0,
     verdict: parsed.verdict === "pass" ? "pass" : "fail",
-    scores: {
-      correctness: parsed.scores.correctness,
-      completeness: parsed.scores.completeness ?? 0,
-      code_quality: parsed.scores.code_quality ?? 0,
-      test_coverage: parsed.scores.test_coverage ?? 0,
-    },
+    scores,
     issues: Array.isArray(parsed.issues) ? parsed.issues : [],
     suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
   };
@@ -121,6 +135,14 @@ export function checkThresholds(
     ["test_coverage", scores.test_coverage, criteria.test_coverage],
   ];
 
+  // Check optional extended criteria only when both score and threshold exist
+  if (scores.security != null && criteria.security != null) {
+    checks.push(["security", scores.security, criteria.security]);
+  }
+  if (scores.resilience != null && criteria.resilience != null) {
+    checks.push(["resilience", scores.resilience, criteria.resilience]);
+  }
+
   for (const [criterion, score, threshold] of checks) {
     if (score < threshold) {
       failures.push({ criterion, score, threshold });
@@ -131,12 +153,14 @@ export function checkThresholds(
 }
 
 /**
- * Compute the final score as the average of the 4 criteria.
+ * Compute the final score as the average of all available criteria.
+ * Base 4 criteria are always present. Security and resilience are optional.
  */
 export function computeFinalScore(scores: EvaluatorScores): number {
-  return Math.round(
-    (scores.correctness + scores.completeness + scores.code_quality + scores.test_coverage) / 4,
-  );
+  const values = [scores.correctness, scores.completeness, scores.code_quality, scores.test_coverage];
+  if (scores.security != null) values.push(scores.security);
+  if (scores.resilience != null) values.push(scores.resilience);
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
 /**
