@@ -1,5 +1,5 @@
 export { HarnessEngine } from "./harness/engine.js";
-export { loadHarnessConfig } from "./harness/config.js";
+export { loadHarnessConfig, SECURITY_SENSORS } from "./harness/config.js";
 export { ContextLoader } from "./context/loader.js";
 export { StateManager } from "./state/manager.js";
 export { DesignLoader } from "./design/loader.js";
