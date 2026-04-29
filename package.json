@@ -21,6 +21,8 @@
   ],
   "scripts": {
     "build": "tsc",
+    "build:standalone": "node scripts/build-standalone.mjs",
+    "build:standalone:all": "node scripts/build-standalone.mjs --all",
     "start": "tsx src/ui/index.tsx",
     "start:legacy": "tsx src/interactive.ts",
     "cli": "tsx src/cli.ts",

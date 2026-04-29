@@ -69,6 +69,8 @@ to execute every phase, run sensors, and manage state.
 | `adp worktree list` | List active sprint worktrees |
 | `adp worktree clean` | Force-remove all sprint worktrees |
 | `adp worktree add/remove <N>` | Manage individual sprint worktrees |
+| `adp update [--branch X]` | Re-run installer to upgrade (auto-detects platform: PowerShell on Windows, bash elsewhere) |
+| `adp uninstall [-y]` | Remove ADP completely: skill files, npm CLI, standalone binary |
 | `adp pause` | Snapshot progress to `.specs/HANDOFF.md`, stop gracefully |
 | `adp resume` | Read HANDOFF.md + state.json, resume from exact stopping point |
 
