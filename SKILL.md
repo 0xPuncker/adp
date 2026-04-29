@@ -62,6 +62,13 @@ to execute every phase, run sensors, and manage state.
 | `adp design intake <feat>` | Parse a Claude Design handoff and save as design bundle |
 | `adp design show <feat>` | Display the design bundle for a feature |
 | `adp design run <feat>` | Design-first pipeline: intake handoff → specify → design → tasks → execute |
+| `adp templates list` | Show available workflow templates (fix-bug, add-feature, refactor-safely, etc.) |
+| `adp templates show <name>` | Display the full template content |
+| `adp templates use <name> <feat>` | Scaffold `.specs/features/<feat>/spec.md` from a template |
+| `adp validate [feature]` | Run sensors + DAG validation on tasks.md (unresolved refs, cycles, parallel layers) |
+| `adp worktree list` | List active sprint worktrees |
+| `adp worktree clean` | Force-remove all sprint worktrees |
+| `adp worktree add/remove <N>` | Manage individual sprint worktrees |
 | `adp pause` | Snapshot progress to `.specs/HANDOFF.md`, stop gracefully |
 | `adp resume` | Read HANDOFF.md + state.json, resume from exact stopping point |
 
@@ -1304,6 +1311,99 @@ During Design (Step 3), explicitly document:
   the degradation path.
 
 ---
+
+## Workflow Templates
+
+ADP ships with a catalog of **pre-built workflow templates** for common engineering
+scenarios. Use them to bootstrap `spec.md` instead of starting from a blank file.
+
+```bash
+adp templates list                          # show catalog
+adp templates show fix-bug                  # preview a template
+adp templates use security-audit my-audit   # scaffold .specs/features/my-audit/spec.md
+```
+
+Templates live in `templates/workflows/*.md` (in the package or skill install).
+Each has YAML frontmatter (`name`, `description`, `complexity`) and a body with
+REQ scaffolding, recommended sensors, and out-of-scope notes.
+
+**Built-in catalog:**
+- **fix-bug** (small) — reproduce → isolate → patch with regression test
+- **add-feature** (medium) — new feature end-to-end with REQ + NFR
+- **refactor-safely** (medium) — restructure with behavioral invariant guard
+- **security-audit** (large) — deps, secrets, OWASP, input validation, auth
+- **perf-investigation** (medium) — measure-first, profile, fix, verify
+- **dependency-upgrade** (medium) — review changelog, lock, audit, adapt
+
+**Authoring guide:** copy any template, edit frontmatter + body, drop into
+`templates/workflows/`. The catalog auto-discovers it on next `templates list`.
+
+## DAG Validation
+
+Before executing sprints, ADP validates the **task dependency graph** to catch
+broken setups upfront — not mid-sprint.
+
+```bash
+adp validate <feature>
+```
+
+Runs:
+1. **Sensors** — typecheck, lint, test, audit, secret_scan
+2. **DAG parsing** of `.specs/features/<feature>/tasks.md`
+3. **Unresolved reference check** — every `Depends:` must point to a real TASK-NN
+4. **Cycle detection** — DFS-based, reports the cycle path on failure
+5. **Topological layering** — Kahn's algorithm groups tasks into layers; tasks
+   in the same layer have all dependencies resolved by previous layers and are
+   eligible for parallel execution (subject to the `[P]` marker)
+
+Output:
+```
+✓ DAG: 9 tasks, 4 layers
+   L1: TASK-01, TASK-03, TASK-05 [parallel]
+   L2: TASK-02, TASK-04 [parallel]
+   L3: TASK-06, TASK-07, TASK-08 [parallel]
+   L4: TASK-09
+```
+
+The pipeline's Execute step calls `adp validate` before sprint 1 — a broken DAG
+halts the run.
+
+## Worktree Parallelism
+
+Tasks marked `[P]` in `tasks.md` whose layers contain ≥2 tasks are eligible for
+**concurrent execution in isolated git worktrees**.
+
+```bash
+adp worktree list                  # show active sprint worktrees
+adp worktree add 3                 # create .adp/worktrees/sprint-3 + adp/sprint-3 branch
+adp worktree remove 3              # clean up after completion
+adp worktree clean                 # force-remove all sprint worktrees
+```
+
+**How parallelism works:**
+
+For each DAG layer with multiple `[P]` tasks:
+1. Spawn one worktree per task — `git worktree add .adp/worktrees/sprint-N -b adp/sprint-N`
+2. Run the sprint (sensors, evaluator, commit) inside the worktree, in parallel
+3. On success — merge the branch back (`merge --no-ff`), remove the worktree
+4. On failure — preserve the worktree for inspection, log to `STATE.md → Blockers`
+
+Worktrees provide true isolation: each parallel sprint sees a clean working tree
+on its own branch, so concurrent file edits don't conflict.
+
+**Tracked in `state.json`:**
+```json
+{
+  "worktrees": [
+    { "sprint": 3, "branch": "adp/sprint-3", "path": ".adp/worktrees/sprint-3", "status": "active" }
+  ]
+}
+```
+
+**Constraints:**
+- Only `[P]`-marked tasks at the same DAG layer run in parallel
+- Sequential tasks (no `[P]`) always run in the main worktree
+- Failed parallel sprints halt the pipeline; the user resolves before continuing
 
 ## Harness Principles
 
