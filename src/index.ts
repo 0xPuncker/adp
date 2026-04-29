@@ -12,6 +12,12 @@ export { validateDag } from "./tasks/dag.js";
 export type { DagError, DagResult } from "./tasks/dag.js";
 export { WorktreeManager } from "./worktree/manager.js";
 export type { Worktree } from "./worktree/manager.js";
+export { detectPlatform } from "./lifecycle/platform.js";
+export type { Platform, PlatformInfo } from "./lifecycle/platform.js";
+export { runUpdate } from "./lifecycle/update.js";
+export type { UpdateOptions, UpdateResult } from "./lifecycle/update.js";
+export { runUninstall } from "./lifecycle/uninstall.js";
+export type { UninstallOptions, UninstallReport } from "./lifecycle/uninstall.js";
 export {
   buildEvaluatorPrompt,
   parseEvaluatorVerdict,
