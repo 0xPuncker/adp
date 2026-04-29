@@ -574,6 +574,22 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
   }
 }
 
+async function launchTui(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+
+  const here = dirname(fileURLToPath(import.meta.url));
+  const entry = join(here, "ui", "index.js");
+
+  const child = spawn(process.execPath, [entry, ...args], {
+    stdio: "inherit",
+    env: process.env,
+  });
+
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
 // ─── Sprint merge ────────────────────────────────────────────────
 
 interface MergedSprint {
