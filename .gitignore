@@ -6,6 +6,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ADP
+.adp/
+.specs/
+
 # Test / coverage
 coverage/
 .vitest/
