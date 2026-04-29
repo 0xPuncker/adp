@@ -11,6 +11,7 @@ export interface SessionSprint {
   id: number;
   task: string;
   status: "done" | "in_progress" | "planned";
+  score?: number;
 }
 
 /**
@@ -64,11 +65,20 @@ export async function readSessionSprints(cwd: string): Promise<SessionSprint[]> 
           if (entry.type !== "assistant" && entry.type !== "user") continue;
 
           const msgContent = entry.message?.content;
-          const text = Array.isArray(msgContent)
-            ? msgContent.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ")
-            : typeof msgContent === "string"
-              ? msgContent
-              : "";
+          // Collect text from message bodies AND tool_use bash commands
+          // (commit messages with "Score: NN/100" arrive as tool_use input).
+          let text = "";
+          if (Array.isArray(msgContent)) {
+            for (const b of msgContent as Array<{ type: string; text?: string; input?: { command?: string } }>) {
+              if (b.type === "text" && typeof b.text === "string") {
+                text += " " + b.text;
+              } else if (b.type === "tool_use" && b.input && typeof b.input.command === "string") {
+                text += " " + b.input.command;
+              }
+            }
+          } else if (typeof msgContent === "string") {
+            text = msgContent;
+          }
 
           if (!text) continue;
 
@@ -116,6 +126,28 @@ export async function readSessionSprints(cwd: string): Promise<SessionSprint[]> 
             const id = parseInt(match[1], 10);
             if (sprintMap.has(id)) {
               sprintMap.get(id)!.status = "planned";
+            }
+          }
+
+          // Extract scores from "Score: NN/100" or "score: NN" patterns.
+          // Link scores to sprint IDs via "Sprint N" OR "[ADP-TASK-NN]" references
+          // in the same text block (commit messages typically have both score and
+          // task tag together, even if they don't say "Sprint N").
+          const sprintIdsInText = new Set<number>();
+          for (const m of text.matchAll(/Sprint (\d+)/g)) {
+            sprintIdsInText.add(parseInt(m[1], 10));
+          }
+          for (const m of text.matchAll(/\bADP-TASK-(\d+)\b/g)) {
+            sprintIdsInText.add(parseInt(m[1], 10));
+          }
+          for (const m of text.matchAll(/(?:^|\s)[Ss]core:\s*(\d{1,3})(?:\/100)?/g)) {
+            const n = parseInt(m[1], 10);
+            if (n < 0 || n > 100) continue;
+            for (const id of sprintIdsInText) {
+              const sp = sprintMap.get(id);
+              if (sp && (sp.score === undefined || n > sp.score)) {
+                sp.score = n;
+              }
             }
           }
         } catch {

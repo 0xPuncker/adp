@@ -207,8 +207,8 @@ async function showStatus(): Promise<void> {
   const sprintsPlanned = mergedSprints.filter((sp) => sp.status === "planned").length;
   const elapsed = s.startedAt ? formatElapsed(s.startedAt) : "—";
 
-  // Average score (from state.json — only source with scores)
-  const scored = s.sprints.filter((sp) => sp.score !== null);
+  // Average score across merged sprints (state.json + session-extracted scores)
+  const scored = mergedSprints.filter((sp) => sp.score !== null);
   const avgScore = scored.length > 0
     ? (scored.reduce((sum, sp) => sum + (sp.score ?? 0), 0) / scored.length).toFixed(1)
     : "—";
@@ -863,7 +863,7 @@ function mergeSprintData(
         id: sp.id,
         task: sp.task,
         status: sp.status,
-        score: null,
+        score: sp.score ?? null,
         startedAt: null,
         completedAt: null,
       });
@@ -873,6 +873,10 @@ function mergeSprintData(
       // Only update task name if session has a better one
       if (sp.task.length > existing.task.length) {
         existing.task = sp.task;
+      }
+      // Backfill score if state.json has none but session does
+      if (existing.score === null && sp.score !== undefined) {
+        existing.score = sp.score;
       }
     }
   }

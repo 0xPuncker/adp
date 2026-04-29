@@ -43,6 +43,9 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
       const s = await stateManager.load(true);
       // Merge session-detected sprints (ground truth when state.json is stale)
       const sessionSprints = await readSessionSprints(cwd);
+      const sessionById = new Map(sessionSprints.map((ss) => [ss.id, ss]));
+
+      // Add session-only sprints
       if (sessionSprints.length > s.sprints.length) {
         const stateIds = new Set(s.sprints.map((sp) => sp.id));
         for (const ss of sessionSprints) {
@@ -52,7 +55,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
               task: ss.task,
               status: ss.status === "done" ? "done" : ss.status === "in_progress" ? "build" : "contract",
               contract: "",
-              score: null,
+              score: ss.score ?? null,
               evaluator_scores: null,
               cost: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
               startedAt: null,
@@ -61,6 +64,16 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
           }
         }
         s.sprints.sort((a, b) => a.id - b.id);
+      }
+
+      // Backfill scores for state.json sprints that are unscored but have session data
+      for (const sp of s.sprints) {
+        if (sp.score === null) {
+          const ss = sessionById.get(sp.id);
+          if (ss?.score !== undefined) {
+            sp.score = ss.score;
+          }
+        }
       }
       // Merge session activity (real-time from JSONL)
       const sessionActivity = await readSessionActivity(cwd);

@@ -83,10 +83,10 @@ export function SprintTable({ sprints, maxRows, isActive = true }: SprintTablePr
           {visible.map((sprint) => {
             const { icon, color } = sprintStyle[sprint.status] || { icon: "?", color: theme.dim };
             const scoreVal = sprint.score;
-            const score = scoreVal !== null
-              ? (scoreVal > 10 ? `${scoreVal}%` : `${scoreVal}/10`)
+            const score = scoreVal !== null && scoreVal !== undefined
+              ? `${scoreVal}/100`
               : " — ";
-            const scoreGood = scoreVal !== null && (scoreVal > 10 ? scoreVal >= 80 : scoreVal >= 8);
+            const scoreGood = scoreVal !== null && scoreVal !== undefined && scoreVal >= 85;
             const task = sprint.task.length > (hasEval ? 28 : 36)
               ? sprint.task.slice(0, hasEval ? 25 : 33) + "..."
               : sprint.task;
