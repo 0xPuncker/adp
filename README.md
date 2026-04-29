@@ -31,32 +31,79 @@ typecheck, test) enforced at every boundary.
 
 ## Install
 
-Install the skill once per machine. After it lands in `~/.claude/skills/adp/`,
-Claude Code picks it up automatically in every project.
+Install once per machine. The installer copies skill files to `~/.claude/skills/adp/`
+**and** installs the `adp` CLI globally via npm. Claude Code picks up the skill
+automatically in every project.
 
-**macOS / Linux / WSL**
+### macOS / Linux / Git Bash / WSL
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
 ```
 
-**Windows (PowerShell)**
+### Windows (native PowerShell)
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.ps1 | iex
 ```
 
-**Via npx (any platform with Node ≥ 22)**
+> **PowerShell execution policy:** if `iex` is blocked, run with
+> `Set-ExecutionPolicy -Scope Process Bypass` first, or invoke via
+> `powershell -ExecutionPolicy Bypass -Command "iwr ... | iex"`.
+
+### Skill only (no CLI)
+
+If you don't have Node 22+ and only want the skill methodology files:
 
 ```bash
-npx github:0xPuncker/adp adp-install
+ADP_SKILL_ONLY=1 curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
 ```
 
-**Manual clone**
+PowerShell:
+
+```powershell
+$env:ADP_SKILL_ONLY = "1"
+iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.ps1 | iex
+```
+
+### Standalone binary (no Node required)
+
+If Node 22+ isn't available, build a standalone `adp` binary from a checkout:
 
 ```bash
-git clone https://github.com/0xPuncker/adp.git ~/.claude/skills/adp
+git clone https://github.com/0xPuncker/adp.git
+cd adp && npm install && npm run build
+npm run build:standalone        # produces dist/adp-<plat>-<arch>[.exe]
 ```
+
+> The standalone binary excludes the TUI (`adp tui` / `adp-i`). All other
+> commands work normally.
+
+### Update
+
+To upgrade an existing install:
+
+```bash
+adp update                      # main branch
+adp update --branch feat/foo    # specific branch
+```
+
+This re-runs the platform-appropriate installer. The `adp` command picks
+PowerShell on native Windows, bash everywhere else.
+
+### Uninstall
+
+To remove ADP completely:
+
+```bash
+adp uninstall                   # confirms before removing
+adp uninstall -y                # skip confirmation
+```
+
+Removes:
+- `~/.claude/skills/adp/` — skill files and templates
+- The global `adp` CLI (via `npm uninstall -g adp`)
+- Any standalone binary at `~/.claude/skills/adp/bin/adp[.exe]`
 
 ### Verify
 
@@ -66,21 +113,23 @@ ls ~/.claude/skills/adp/SKILL.md && echo "ok"
 
 Then open Claude Code in any project and say `adp init`.
 
-### Overrides
+### Installer overrides
 
-All installers honour these environment variables:
+Both installers honour these environment variables:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `CLAUDE_SKILLS_DIR` | `~/.claude/skills` | Alternate skills root |
-| `ADP_REF` | `main` | Branch, tag, or commit to install (shell/ps1 only) |
-| `ADP_REPO` | `https://github.com/0xPuncker/adp.git` | Fork to install from |
+| `ADP_BRANCH` | `main` | Branch, tag, or commit to install |
+| `ADP_FORCE` | `0` | `1` overwrites existing install without prompting |
+| `ADP_SKILL_ONLY` | `0` | `1` installs skill files only, skips CLI |
+| `ADP_DRY_RUN` | `0` | `1` prints actions without executing |
 
 ### Requirements
 
-- `git` on `PATH`
-- Claude Code with skill support
-- Node.js ≥ 22 *(only if using the npx / manual dev workflows)*
+- `git` and `curl` on `PATH` (for shell installer); `git` and `iwr` (PowerShell)
+- Node.js ≥ 22 + `npm` (for CLI install — skill-only mode skips this)
+- Claude Code with skill support (for the skill side)
 
 ### Developing against a local checkout
 
