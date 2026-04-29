@@ -16,7 +16,10 @@ import { TemplateCatalog } from "./templates/catalog.js";
 import { parseTasks } from "./tasks/parser.js";
 import { validateDag } from "./tasks/dag.js";
 import { WorktreeManager } from "./worktree/manager.js";
+import { runUpdate } from "./lifecycle/update.js";
+import { runUninstall } from "./lifecycle/uninstall.js";
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 
 const [, , command, ...rawArgs] = process.argv;
 const cwdIdx = rawArgs.indexOf("--cwd");
@@ -53,6 +56,12 @@ async function main(): Promise<void> {
       break;
     case "worktree":
       await runWorktree(args[0], args[1]);
+      break;
+    case "update":
+      await runUpdateCommand();
+      break;
+    case "uninstall":
+      await runUninstallCommand();
       break;
     case "start":
       await startPipeline(args[0], args[1]);
@@ -747,6 +756,57 @@ async function runWorktree(subcommand?: string, sprintArg?: string): Promise<voi
   process.exitCode = 1;
 }
 
+async function runUpdateCommand(): Promise<void> {
+  const branchIdx = args.indexOf("--branch");
+  const branch = branchIdx >= 0 ? args[branchIdx + 1] : "main";
+
+  console.log(`\n  ADP Update — re-running installer for branch '${branch}'\n`);
+
+  const result = await runUpdate({ branch });
+
+  if (result.exitCode === 0) {
+    console.log(`\n  \x1b[32m✓\x1b[0m Update complete (${result.shell})\n`);
+  } else {
+    console.log(`\n  \x1b[31m✗\x1b[0m Installer exited with code ${result.exitCode}\n`);
+    process.exitCode = result.exitCode;
+  }
+}
+
+async function runUninstallCommand(): Promise<void> {
+  const yes = args.includes("--yes") || args.includes("-y");
+
+  console.log("\n  ADP Uninstall\n");
+  console.log("  This will remove:");
+  console.log("    • ~/.claude/skills/adp/  (skill files)");
+  console.log("    • adp CLI (npm uninstall -g adp)");
+  console.log("    • any standalone binary\n");
+
+  if (!yes) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question("  Continue? [y/N] ");
+    rl.close();
+    if (!/^[yY]/.test(answer)) {
+      console.log("\n  Aborted.\n");
+      return;
+    }
+  }
+
+  const report = await runUninstall({ yes: true });
+
+  console.log("");
+  console.log(`  ${report.skillFilesRemoved ? "\x1b[32m✓\x1b[0m" : "\x1b[2m·\x1b[0m"} Skill files`);
+  console.log(`  ${report.npmRemoved ? "\x1b[32m✓\x1b[0m" : "\x1b[2m·\x1b[0m"} npm CLI`);
+  console.log(`  ${report.standaloneRemoved ? "\x1b[32m✓\x1b[0m" : "\x1b[2m·\x1b[0m"} Standalone binary`);
+
+  if (report.errors.length > 0) {
+    console.log("\n  \x1b[33mWarnings:\x1b[0m");
+    for (const err of report.errors) {
+      console.log(`    ${err}`);
+    }
+  }
+  console.log("");
+}
+
 async function launchTui(): Promise<void> {
   const { spawn } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
@@ -838,6 +898,8 @@ function printUsage(): void {
     templates <sub>      list | show <name> | use <name> <feature>
     validate [feat]      Run sensors + DAG validation for a feature's tasks.md
     worktree <sub>       list | clean | add <N> | remove <N>
+    update [--branch X]  Re-run installer to upgrade ADP (auto-detects platform)
+    uninstall [-y]       Remove ADP completely (skill files + CLI + standalone)
     guides               List loaded guides with token counts
     tui                  Launch interactive TUI dashboard
     start <feat> [comp]  Start pipeline for a feature
