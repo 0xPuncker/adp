@@ -4,6 +4,14 @@ export { ContextLoader } from "./context/loader.js";
 export { StateManager } from "./state/manager.js";
 export { DesignLoader } from "./design/loader.js";
 export { DesignExtractor } from "./design/extractor.js";
+export { TemplateCatalog } from "./templates/catalog.js";
+export type { WorkflowTemplate } from "./templates/catalog.js";
+export { parseTasks } from "./tasks/parser.js";
+export type { Task } from "./tasks/parser.js";
+export { validateDag } from "./tasks/dag.js";
+export type { DagError, DagResult } from "./tasks/dag.js";
+export { WorktreeManager } from "./worktree/manager.js";
+export type { Worktree } from "./worktree/manager.js";
 export {
   buildEvaluatorPrompt,
   parseEvaluatorVerdict,
