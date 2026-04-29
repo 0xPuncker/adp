@@ -427,6 +427,12 @@ STOP and create `tasks.md`. Log: `safety_valve_triggered` to activity.
 
 **Load guides:** ALL guides (stack, architecture, structure, conventions, testing, integrations, concerns)
 
+**Pre-flight: DAG validation.** Before sprint 1 starts, run `adp validate <feature>`.
+This parses `tasks.md`, checks for unresolved `Depends:` references and cycles, and
+computes parallel-eligible layers. If validation fails, halt and surface the errors —
+do not proceed with a broken DAG. The layer output also tells you which `[P]`-marked
+tasks may run concurrently in worktrees (see [Worktree Parallelism](#worktree-parallelism)).
+
 **Execution mode** (from `harness.yaml → mode`):
 - `sprint` (default) — Decompose into sprints, evaluate each. Best for Large/Complex.
 - `continuous` — Build all tasks in one pass, evaluate once at end. Best with Opus 4.6+ on Medium scope.
