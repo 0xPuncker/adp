@@ -12,6 +12,11 @@ import { loadHarnessConfig } from "./harness/config.js";
 import { computeFinalScore, checkThresholds, meetsMinScore } from "./evaluator/engine.js";
 import { DesignLoader } from "./design/loader.js";
 import { DesignExtractor } from "./design/extractor.js";
+import { TemplateCatalog } from "./templates/catalog.js";
+import { parseTasks } from "./tasks/parser.js";
+import { validateDag } from "./tasks/dag.js";
+import { WorktreeManager } from "./worktree/manager.js";
+import { readFile } from "node:fs/promises";
 
 const [, , command, ...rawArgs] = process.argv;
 const cwdIdx = rawArgs.indexOf("--cwd");
@@ -39,6 +44,15 @@ async function main(): Promise<void> {
       break;
     case "design":
       await runDesign(args[0], args[1]);
+      break;
+    case "templates":
+      await runTemplates(args[0], args[1], args[2]);
+      break;
+    case "validate":
+      await runValidate(args[0]);
+      break;
+    case "worktree":
+      await runWorktree(args[0], args[1]);
       break;
     case "start":
       await startPipeline(args[0], args[1]);
@@ -574,6 +588,165 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
   }
 }
 
+async function runTemplates(subcommand?: string, name?: string, feature?: string): Promise<void> {
+  const catalog = new TemplateCatalog();
+
+  if (!subcommand || subcommand === "list") {
+    const templates = await catalog.list();
+    if (templates.length === 0) {
+      console.log("\n  No templates found.\n");
+      return;
+    }
+    console.log("\n  ADP Workflow Templates\n");
+    for (const t of templates) {
+      const tag = `[${t.complexity}]`.padEnd(10);
+      console.log(`  \x1b[36m${t.name.padEnd(22)}\x1b[0m \x1b[2m${tag}\x1b[0m ${t.description}`);
+    }
+    console.log("");
+    return;
+  }
+
+  if (subcommand === "show") {
+    if (!name) {
+      console.log("  Usage: adp templates show <name>");
+      process.exitCode = 1;
+      return;
+    }
+    const content = await catalog.show(name);
+    console.log(content);
+    return;
+  }
+
+  if (subcommand === "use") {
+    if (!name || !feature) {
+      console.log("  Usage: adp templates use <name> <feature>");
+      process.exitCode = 1;
+      return;
+    }
+    const result = await catalog.use(name, feature, cwd);
+    console.log(`\n  \x1b[32m✓\x1b[0m Wrote ${result.written}\n`);
+    return;
+  }
+
+  console.log(`  Unknown templates subcommand: ${subcommand}`);
+  console.log("  Usage: adp templates [list|show <name>|use <name> <feature>]");
+  process.exitCode = 1;
+}
+
+async function runValidate(featureSlug?: string): Promise<void> {
+  console.log("\n  ADP Validate\n");
+
+  // 1. Sensors
+  const engine = new HarnessEngine(cwd);
+  const results = await engine.runSensors();
+  const sensorsPass = results.every((r) => r.passed);
+
+  for (const r of results) {
+    const icon = r.passed ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
+    console.log(`  ${icon} sensor: ${r.name}`);
+  }
+
+  // 2. DAG validation if a feature has tasks.md
+  let dagPass = true;
+  if (featureSlug) {
+    const tasksPath = resolve(cwd, ".specs", "features", featureSlug, "tasks.md");
+    try {
+      const content = await readFile(tasksPath, "utf-8");
+      const tasks = parseTasks(content);
+      const dag = validateDag(tasks);
+
+      if (dag.valid) {
+        console.log(`  \x1b[32m✓\x1b[0m DAG: ${tasks.length} tasks, ${dag.layers.length} layers`);
+        for (let i = 0; i < dag.layers.length; i++) {
+          const layer = dag.layers[i];
+          const tag = layer.length > 1 ? "\x1b[33m[parallel]\x1b[0m" : "";
+          console.log(`     L${i + 1}: ${layer.join(", ")} ${tag}`);
+        }
+      } else {
+        dagPass = false;
+        console.log(`  \x1b[31m✗\x1b[0m DAG invalid:`);
+        for (const err of dag.errors) {
+          console.log(`     - ${err.message}`);
+        }
+      }
+    } catch {
+      console.log(`  \x1b[2m·\x1b[0m DAG: no tasks.md for ${featureSlug}`);
+    }
+  } else {
+    console.log(`  \x1b[2m·\x1b[0m DAG: skipped (no feature specified)`);
+  }
+
+  console.log("");
+  if (!sensorsPass || !dagPass) {
+    process.exitCode = 1;
+  }
+}
+
+async function runWorktree(subcommand?: string, sprintArg?: string): Promise<void> {
+  const mgr = new WorktreeManager(cwd);
+
+  if (!subcommand || subcommand === "list") {
+    const trees = await mgr.list();
+    if (trees.length === 0) {
+      console.log("\n  No active sprint worktrees.\n");
+      return;
+    }
+    console.log("\n  ADP Worktrees\n");
+    for (const wt of trees) {
+      console.log(`  \x1b[36msprint-${wt.sprint}\x1b[0m  ${wt.branch}  \x1b[2m${wt.path}\x1b[0m`);
+    }
+    console.log("");
+    return;
+  }
+
+  if (subcommand === "clean") {
+    const trees = await mgr.list();
+    if (trees.length === 0) {
+      console.log("\n  No worktrees to clean.\n");
+      return;
+    }
+    console.log(`\n  Cleaning ${trees.length} worktree(s)...`);
+    for (const wt of trees) {
+      try {
+        await mgr.remove(wt.sprint, true);
+        console.log(`  \x1b[32m✓\x1b[0m Removed sprint-${wt.sprint}`);
+      } catch (err) {
+        console.log(`  \x1b[31m✗\x1b[0m sprint-${wt.sprint}: ${(err as Error).message}`);
+      }
+    }
+    console.log("");
+    return;
+  }
+
+  if (subcommand === "add") {
+    const sprint = parseInt(sprintArg ?? "", 10);
+    if (isNaN(sprint)) {
+      console.log("  Usage: adp worktree add <sprint-number>");
+      process.exitCode = 1;
+      return;
+    }
+    const wt = await mgr.add(sprint);
+    console.log(`\n  \x1b[32m✓\x1b[0m Created ${wt.path}\n`);
+    return;
+  }
+
+  if (subcommand === "remove") {
+    const sprint = parseInt(sprintArg ?? "", 10);
+    if (isNaN(sprint)) {
+      console.log("  Usage: adp worktree remove <sprint-number>");
+      process.exitCode = 1;
+      return;
+    }
+    await mgr.remove(sprint, true);
+    console.log(`\n  \x1b[32m✓\x1b[0m Removed sprint-${sprint}\n`);
+    return;
+  }
+
+  console.log(`  Unknown worktree subcommand: ${subcommand}`);
+  console.log("  Usage: adp worktree [list|clean|add <N>|remove <N>]");
+  process.exitCode = 1;
+}
+
 async function launchTui(): Promise<void> {
   const { spawn } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
@@ -662,6 +835,9 @@ function printUsage(): void {
     sensors              Run harness sensors (typecheck, lint, test)
     evaluate             Score unscored sprints (retroactive QA)
     design <sub> [feat]  Extract/show/intake design tokens & components
+    templates <sub>      list | show <name> | use <name> <feature>
+    validate [feat]      Run sensors + DAG validation for a feature's tasks.md
+    worktree <sub>       list | clean | add <N> | remove <N>
     guides               List loaded guides with token counts
     tui                  Launch interactive TUI dashboard
     start <feat> [comp]  Start pipeline for a feature
