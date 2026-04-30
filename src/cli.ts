@@ -18,6 +18,7 @@ import { validateDag } from "./tasks/dag.js";
 import { WorktreeManager } from "./worktree/manager.js";
 import { runUpdate } from "./lifecycle/update.js";
 import { runUninstall } from "./lifecycle/uninstall.js";
+import { banner, box, divider, kv, ok, fail, info, bullet, palette, print } from "./cli/branding.js";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 
@@ -760,14 +761,40 @@ async function runUpdateCommand(): Promise<void> {
   const branchIdx = args.indexOf("--branch");
   const branch = branchIdx >= 0 ? args[branchIdx + 1] : "main";
 
-  console.log(`\n  ADP Update — re-running installer for branch '${branch}'\n`);
+  print(
+    banner("ADP — Update", "Re-run platform installer to upgrade"),
+    box(
+      [
+        kv([
+          ["Branch", branch],
+          ["Source", `github.com/0xPuncker/adp`],
+        ]),
+        "",
+        info("Will detect platform → run install.ps1 (Windows) or install.sh (Unix)."),
+      ].join("\n").split("\n"),
+      { title: "Plan", titleColor: "accent" },
+    ),
+  );
 
   const result = await runUpdate({ branch });
 
   if (result.exitCode === 0) {
-    console.log(`\n  \x1b[32m✓\x1b[0m Update complete (${result.shell})\n`);
+    print(
+      box(
+        [ok(`Update complete via ${result.shell}`), info("Run `adp help` to verify the new version is wired up.")],
+        { title: "Done", titleColor: "success", borderColor: "success" },
+      ),
+    );
   } else {
-    console.log(`\n  \x1b[31m✗\x1b[0m Installer exited with code ${result.exitCode}\n`);
+    print(
+      box(
+        [
+          fail(`Installer exited with code ${result.exitCode}`),
+          info(`Try: \`adp update --branch main\` or run the platform installer directly.`),
+        ],
+        { title: "Failed", titleColor: "error", borderColor: "error" },
+      ),
+    );
     process.exitCode = result.exitCode;
   }
 }
@@ -775,36 +802,50 @@ async function runUpdateCommand(): Promise<void> {
 async function runUninstallCommand(): Promise<void> {
   const yes = args.includes("--yes") || args.includes("-y");
 
-  console.log("\n  ADP Uninstall\n");
-  console.log("  This will remove:");
-  console.log("    • ~/.claude/skills/adp/  (skill files)");
-  console.log("    • adp CLI (npm uninstall -g adp)");
-  console.log("    • any standalone binary\n");
+  print(
+    banner("ADP — Uninstall", "Remove skill files, CLI, and standalone binary"),
+    box(
+      [
+        bullet(`${palette.text}~/.claude/skills/adp/${palette.reset}  ${palette.dim}skill files${palette.reset}`),
+        bullet(`${palette.text}npm uninstall -g adp${palette.reset}  ${palette.dim}global CLI${palette.reset}`),
+        bullet(`${palette.text}standalone binary${palette.reset}  ${palette.dim}if installed${palette.reset}`),
+      ],
+      { title: "Will remove", titleColor: "warning" },
+    ),
+  );
 
   if (!yes) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await rl.question("  Continue? [y/N] ");
+    const answer = await rl.question(`  ${palette.warning}?${palette.reset} Continue? [y/N] `);
     rl.close();
     if (!/^[yY]/.test(answer)) {
-      console.log("\n  Aborted.\n");
+      print(box([info("Aborted by user.")], { title: "Cancelled", titleColor: "dim", borderColor: "dim" }));
       return;
     }
   }
 
   const report = await runUninstall({ yes: true });
-
-  console.log("");
-  console.log(`  ${report.skillFilesRemoved ? "\x1b[32m✓\x1b[0m" : "\x1b[2m·\x1b[0m"} Skill files`);
-  console.log(`  ${report.npmRemoved ? "\x1b[32m✓\x1b[0m" : "\x1b[2m·\x1b[0m"} npm CLI`);
-  console.log(`  ${report.standaloneRemoved ? "\x1b[32m✓\x1b[0m" : "\x1b[2m·\x1b[0m"} Standalone binary`);
+  const lines = [
+    `  ${report.skillFilesRemoved ? `${palette.success}✓${palette.reset}` : `${palette.dim}·${palette.reset}`} Skill files`,
+    `  ${report.npmRemoved ? `${palette.success}✓${palette.reset}` : `${palette.dim}·${palette.reset}`} npm CLI`,
+    `  ${report.standaloneRemoved ? `${palette.success}✓${palette.reset}` : `${palette.dim}·${palette.reset}`} Standalone binary`,
+  ];
 
   if (report.errors.length > 0) {
-    console.log("\n  \x1b[33mWarnings:\x1b[0m");
+    lines.push("", `  ${palette.warning}Warnings${palette.reset}`);
     for (const err of report.errors) {
-      console.log(`    ${err}`);
+      lines.push(`    ${palette.dim}${err}${palette.reset}`);
     }
   }
-  console.log("");
+
+  const allClean = report.skillFilesRemoved && report.npmRemoved && report.standaloneRemoved;
+  print(
+    box(lines, {
+      title: allClean ? "Done" : "Partial",
+      titleColor: allClean ? "success" : "warning",
+      borderColor: allClean ? "success" : "warning",
+    }),
+  );
 }
 
 async function launchTui(): Promise<void> {
@@ -886,44 +927,89 @@ function mergeSprintData(
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
+interface CmdRow {
+  cmd: string;
+  args?: string;
+  desc: string;
+}
+
+function commandTable(rows: CmdRow[]): string {
+  // Compute column widths so usage entries align like a TUI table.
+  const cmdW = Math.max(...rows.map((r) => r.cmd.length)) + 1;
+  const argsW = Math.max(...rows.map((r) => (r.args ?? "").length));
+  return rows
+    .map((r) => {
+      const cmd = `${palette.bold}${palette.accent}${r.cmd.padEnd(cmdW)}${palette.reset}`;
+      const args = `${palette.dim}${(r.args ?? "").padEnd(argsW)}${palette.reset}`;
+      const desc = `${palette.text}${r.desc}${palette.reset}`;
+      return `  ${cmd} ${args}  ${desc}`;
+    })
+    .join("\n");
+}
+
 function printUsage(): void {
-  console.log(`
-  ADP — Autonomous Development Pipeline
-  Spec-to-code sprints with feedback control
+  const pipeline: CmdRow[] = [
+    { cmd: "init", desc: "Detect stack, scaffold .adp/ + .specs/, generate harness.yaml" },
+    { cmd: "map", desc: "Analyze codebase → 8 feedforward guides in .adp/guides/" },
+    { cmd: "run", args: "<feature>", desc: "Execute Specify→Design→Tasks→Execute pipeline" },
+    { cmd: "validate", args: "[feature]", desc: "Run sensors + DAG validation on tasks.md" },
+    { cmd: "verify", desc: "Run all sensors (typecheck, lint, test, audit, …)" },
+    { cmd: "evaluate", desc: "Retroactively score unscored sprints" },
+    { cmd: "pause / resume", desc: "Snapshot to HANDOFF.md / continue from snapshot" },
+  ];
+  const inspect: CmdRow[] = [
+    { cmd: "status", desc: "Pipeline state, sprints, scores, token usage" },
+    { cmd: "usage", desc: "Token breakdown & cost estimate → .adp/usage.json" },
+    { cmd: "sensors", desc: "Run harness sensors and report pass/fail" },
+    { cmd: "guides", desc: "List loaded guides with token counts" },
+    { cmd: "tui / dashboard", desc: "Launch interactive TUI (Live Agents panel, sprints, activity)" },
+  ];
+  const tooling: CmdRow[] = [
+    { cmd: "design", args: "<sub> [feat]", desc: "extract | show | intake | run — tokens + components" },
+    { cmd: "templates", args: "<sub>", desc: "list | show <name> | use <name> <feature>" },
+    { cmd: "worktree", args: "<sub>", desc: "list | clean | add <N> | remove <N>" },
+    { cmd: "update", args: "[--branch X]", desc: "Re-run installer (auto-detects platform)" },
+    { cmd: "uninstall", args: "[-y]", desc: "Remove skill files + CLI + standalone binary" },
+  ];
 
-  Usage: adp <command> [options]
-
-  Commands:
-    status               Pipeline state, sprints, scores, token usage
-    usage                Full token breakdown & cost estimate (saves .adp/usage.json)
-    sensors              Run harness sensors (typecheck, lint, test)
-    evaluate             Score unscored sprints (retroactive QA)
-    design <sub> [feat]  Extract/show/intake design tokens & components
-    templates <sub>      list | show <name> | use <name> <feature>
-    validate [feat]      Run sensors + DAG validation for a feature's tasks.md
-    worktree <sub>       list | clean | add <N> | remove <N>
-    update [--branch X]  Re-run installer to upgrade ADP (auto-detects platform)
-    uninstall [-y]       Remove ADP completely (skill files + CLI + standalone)
-    guides               List loaded guides with token counts
-    tui                  Launch interactive TUI dashboard
-    start <feat> [comp]  Start pipeline for a feature
-    sprint:start <task> <contract>   Begin a sprint
-    sprint:end <id> <score>          Complete a sprint with score
-    log <message>        Add activity log entry
-
-  Options:
-    --cwd <path>         Target project directory (default: cwd)
-
-  Token Tracking:
-    The status bar and /usage command read Claude Code session files
-    (~/.claude/projects/<slug>/*.jsonl) for real-time token accounting.
-    Run "adp usage" to generate .adp/usage.json with per-sprint timing,
-    token counts, and estimated cost — use this for tuning budgets.
-
-  Interactive:
-    npm start [-- --cwd <path>]   Launch TUI dashboard
-    Shortcuts: 1=dashboard, 2=sensors, 3=usage, r=refresh, ?=help, q=quit
-`);
+  print(
+    banner("ADP — Autonomous Development Pipeline", "Spec-to-code sprints with feedback control"),
+    box(
+      [
+        `${palette.dim}Usage:${palette.reset} ${palette.text}adp ${palette.accent}<command>${palette.reset} ${palette.dim}[options]${palette.reset}`,
+        "",
+        kv([
+          ["--cwd <path>", "Target project directory (default: process cwd)"],
+          ["--branch X", "(update only) install from a specific git branch"],
+          ["-y / --yes", "(uninstall only) skip confirmation"],
+        ], "dim"),
+      ],
+      { title: "Synopsis", titleColor: "accent" },
+    ),
+    divider("Pipeline"),
+    commandTable(pipeline),
+    "",
+    divider("Inspect"),
+    commandTable(inspect),
+    "",
+    divider("Tooling"),
+    commandTable(tooling),
+    "",
+    box(
+      [
+        `${palette.dim}1${palette.reset} ${palette.text}dashboard${palette.reset}    ${palette.dim}2${palette.reset} ${palette.text}sensors${palette.reset}    ${palette.dim}3${palette.reset} ${palette.text}usage${palette.reset}    ${palette.dim}4${palette.reset} ${palette.text}live agents${palette.reset}`,
+        `${palette.dim}/${palette.reset} ${palette.text}command palette${palette.reset}    ${palette.dim}r${palette.reset} ${palette.text}refresh${palette.reset}    ${palette.dim}?${palette.reset} ${palette.text}help${palette.reset}    ${palette.dim}q${palette.reset} ${palette.text}quit${palette.reset}`,
+      ],
+      { title: "TUI shortcuts (after `adp tui`)", titleColor: "accent" },
+    ),
+    box(
+      [
+        `${palette.dim}Skill (in Claude Code):${palette.reset}  ${palette.text}open any project, say "adp init"${palette.reset}`,
+        `${palette.dim}Repo:${palette.reset}                    ${palette.accent}https://github.com/0xPuncker/adp${palette.reset}`,
+      ],
+      { title: "More", titleColor: "accent" },
+    ),
+  );
 }
 
 function statusLabel(status: string): string {

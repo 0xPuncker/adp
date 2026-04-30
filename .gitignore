@@ -9,6 +9,10 @@ yarn-error.log*
 # ADP
 .adp/
 .specs/
+.claude/skills/adp/
+
+# Local-only screenshots and dev scratch
+screenshots/
 
 # Test / coverage
 coverage/

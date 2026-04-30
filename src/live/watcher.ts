@@ -8,7 +8,10 @@ import type { EvaluatorScores } from "../types.js";
 
 export type LiveWatcherStatus =
   | { kind: "watching"; dir: string }
+  | { kind: "idle"; reason: string }
   | { kind: "degraded"; reason: string };
+
+const POLL_INTERVAL_MS = 2000;
 
 export interface LiveWatcherEvents {
   event: (e: SubagentEvent) => void;
@@ -47,6 +50,7 @@ export class LiveWatcher extends EventEmitter {
   private readonly factory: (dir: string) => FSWatcher;
   private events = new Map<string, SubagentEvent>();
   private closed = false;
+  private pollTimer: NodeJS.Timeout | null = null;
 
   constructor(opts: LiveWatcherOptions) {
     super();
@@ -66,14 +70,41 @@ export class LiveWatcher extends EventEmitter {
 
   /**
    * Begin watching. Resolves once initial scan is complete.
-   * If the dir doesn't exist, emits a `degraded` status and resolves without throwing.
+   *
+   * If the subagents dir doesn't exist YET, emits an `idle` status (not `degraded`)
+   * and polls every 2s for it to appear. The dir typically only materializes once
+   * the active session spawns its first sub-agent — until then there's nothing to
+   * watch but the panel should render an empty state, not a failure banner.
+   *
+   * `degraded` is reserved for callers that pass a path under a non-existent project
+   * session (the caller can choose to surface that — see `useLiveEvents`).
    */
   async start(): Promise<void> {
     if (!existsSync(this.dir)) {
-      this.emit("status", { kind: "degraded", reason: `subagents dir not found: ${this.dir}` });
+      this.emit("status", { kind: "idle", reason: "subagents dir not yet created" });
+      this.schedulePoll();
       return;
     }
 
+    await this.attachWatcher();
+  }
+
+  private schedulePoll(): void {
+    if (this.closed || this.pollTimer) return;
+    this.pollTimer = setInterval(() => {
+      if (this.closed) return;
+      if (existsSync(this.dir)) {
+        if (this.pollTimer) {
+          clearInterval(this.pollTimer);
+          this.pollTimer = null;
+        }
+        void this.attachWatcher();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  private async attachWatcher(): Promise<void> {
+    if (this.closed) return;
     this.emit("status", { kind: "watching", dir: this.dir });
     const watcher = this.factory(this.dir);
     this.watcher = watcher;
@@ -103,6 +134,10 @@ export class LiveWatcher extends EventEmitter {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;

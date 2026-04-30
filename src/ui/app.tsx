@@ -78,6 +78,18 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
           }
         }
       }
+
+      // Live correlation: any sub-agent currently running against a sprint flips
+      // that sprint's status to "build"/"evaluating" — gives the user real-time
+      // visibility into in-progress work without waiting for state.json to update.
+      const runningEvents = live.events.filter((e) => e.status === "running" && e.sprintId !== null);
+      for (const ev of runningEvents) {
+        const sp = s.sprints.find((x) => x.id === ev.sprintId);
+        if (!sp) continue;
+        // Only override unscored sprints — don't downgrade a "done" sprint.
+        if (sp.score !== null) continue;
+        sp.status = ev.classified === "evaluator" ? "evaluating" : "build";
+      }
       // Merge session activity (real-time from JSONL)
       const sessionActivity = await readSessionActivity(cwd);
       if (sessionActivity.length > 0) {
@@ -100,6 +112,25 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     const timer = setInterval(load, refreshInterval);
     return () => clearInterval(timer);
   }, []);
+
+  // Re-merge whenever the live watcher emits a new event so in-progress sprints
+  // appear within the watcher's latency (~200ms) instead of waiting for the 3s tick.
+  useEffect(() => {
+    if (!state) return;
+    const next = { ...state, sprints: state.sprints.map((sp) => ({ ...sp })) };
+    const runningEvents = live.events.filter((e) => e.status === "running" && e.sprintId !== null);
+    let changed = false;
+    for (const ev of runningEvents) {
+      const sp = next.sprints.find((x) => x.id === ev.sprintId);
+      if (!sp || sp.score !== null) continue;
+      const desired = ev.classified === "evaluator" ? "evaluating" : "build";
+      if (sp.status !== desired) {
+        sp.status = desired;
+        changed = true;
+      }
+    }
+    if (changed) setState(next);
+  }, [live.events]);
 
   // Clear feedback after 3s
   useEffect(() => {
@@ -298,6 +329,41 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
   const maxSprintRows = rows > 30 ? undefined : rows - 16;
   const sprint = selectedSprint ? state.sprints.find((s) => s.id === selectedSprint) : null;
 
+  // Compute per-panel content width hints so each panel's text adapts to layout.
+  // Panel overhead: border (2) + paddingX=1 (2) = 4 chars per panel.
+  // Sprint table has the most horizontal content (5 columns), so it gets the
+  // biggest weight. Activity log is narrow rows. Live panel sits in the middle.
+  const PANEL_OVERHEAD = 4;
+  let sprintContentWidth: number;
+  let activityContentWidth: number;
+  let liveContentWidth: number;
+  if (isNarrow) {
+    // Stacked — each panel uses full terminal width.
+    sprintContentWidth = Math.max(20, columns - PANEL_OVERHEAD);
+    activityContentWidth = sprintContentWidth;
+    liveContentWidth = sprintContentWidth;
+  } else if (isWide) {
+    // Three columns at >=120 cols. Allocate by weight 4:3:4 (sprint:activity:live)
+    // so the sprint table never clips its Score/Eval columns and the live panel
+    // has room for the score chips on one line.
+    const total = columns - 2; // 2 inter-panel margins
+    const sprintW = Math.floor((total * 4) / 11);
+    const activityW = Math.floor((total * 3) / 11);
+    const liveW = total - sprintW - activityW;
+    sprintContentWidth = Math.max(40, sprintW - PANEL_OVERHEAD);
+    activityContentWidth = Math.max(24, activityW - PANEL_OVERHEAD);
+    liveContentWidth = Math.max(36, liveW - PANEL_OVERHEAD);
+  } else {
+    // Two columns at 80–119 cols. Sprint takes 60%, activity 40% — same logic:
+    // sprint table needs more horizontal room than activity log.
+    const total = columns - 1; // 1 inter-panel margin
+    const sprintW = Math.floor((total * 3) / 5);
+    const activityW = total - sprintW;
+    sprintContentWidth = Math.max(40, sprintW - PANEL_OVERHEAD);
+    activityContentWidth = Math.max(20, activityW - PANEL_OVERHEAD);
+    liveContentWidth = sprintContentWidth;
+  }
+
   return (
     <Box flexDirection="column" width={columns}>
       <Header state={state} lastRefresh={lastRefresh} cwd={cwd} />
@@ -306,9 +372,14 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
         {view === "dashboard" && (
           isNarrow ? (
             <Box flexDirection="column" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
+              <SprintTable
+                sprints={state.sprints}
+                maxRows={maxSprintRows}
+                isActive={!commandActive}
+                contentWidth={sprintContentWidth}
+              />
               <Box marginTop={1}>
-                <ActivityLog activity={state.activity} limit={8} />
+                <ActivityLog activity={state.activity} limit={8} contentWidth={activityContentWidth} />
               </Box>
               {!isVeryNarrow && (
                 <Box marginTop={1}>
@@ -317,23 +388,36 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
                     sensorTail={live.sensorTail}
                     status={live.status}
                     degradedReason={live.degradedReason}
+                    contentWidth={liveContentWidth}
                   />
                 </Box>
               )}
             </Box>
           ) : (
             <Box flexDirection="row" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
-              <Box marginLeft={1}>
-                <ActivityLog activity={state.activity} limit={rows > 30 ? 16 : 10} />
+              <Box width={sprintContentWidth + 4} flexShrink={0}>
+                <SprintTable
+                  sprints={state.sprints}
+                  maxRows={maxSprintRows}
+                  isActive={!commandActive}
+                  contentWidth={sprintContentWidth}
+                />
+              </Box>
+              <Box marginLeft={1} width={activityContentWidth + 4} flexShrink={0}>
+                <ActivityLog
+                  activity={state.activity}
+                  limit={rows > 30 ? 16 : 10}
+                  contentWidth={activityContentWidth}
+                />
               </Box>
               {isWide && (
-                <Box marginLeft={1} flexGrow={1}>
+                <Box marginLeft={1} flexGrow={1} flexShrink={1}>
                   <LiveAgentPanel
                     events={live.events}
                     sensorTail={live.sensorTail}
                     status={live.status}
                     degradedReason={live.degradedReason}
+                    contentWidth={liveContentWidth}
                   />
                 </Box>
               )}
@@ -357,6 +441,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
             degradedReason={live.degradedReason}
             maxEvents={20}
             maxSensorLines={20}
+            contentWidth={Math.max(40, columns - PANEL_OVERHEAD)}
           />
         )}
 
