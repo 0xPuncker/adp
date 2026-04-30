@@ -149,41 +149,60 @@ function SubagentRow({
         <Text color={theme.dim}>  {promptSnippet}</Text>
       </Box>
       {event.verdict.parsedScores && (
-        <Box flexWrap="wrap">
-          {renderScores(event.verdict.parsedScores, thresholds)}
-        </Box>
+        <ScoreLine
+          scores={event.verdict.parsedScores}
+          thresholds={thresholds}
+          contentWidth={contentWidth}
+        />
       )}
     </Box>
   );
 }
 
-function renderScores(scores: EvaluatorScores, thresholds?: EvaluatorScores): React.ReactElement[] {
-  const fields: Array<[keyof EvaluatorScores, string]> = [
-    ["correctness", "C"],
-    ["completeness", "M"],
-    ["code_quality", "Q"],
-    ["test_coverage", "T"],
-    ["security", "S"],
-    ["resilience", "R"],
-  ];
-  const out: React.ReactElement[] = [<Text key="prefix" color={theme.dim}>  </Text>];
-  for (const [field, label] of fields) {
-    const value = scores[field];
-    if (typeof value !== "number") continue;
-    const threshold = thresholds?.[field];
-    const passColor =
-      threshold === undefined
-        ? theme.text
-        : value >= threshold
-        ? theme.success
-        : theme.error;
-    out.push(
-      <Text key={field} color={passColor}>
-        {`${label}:${value} `}
-      </Text>,
-    );
-  }
-  return out;
+const SCORE_FIELDS: Array<[keyof EvaluatorScores, string]> = [
+  ["correctness", "C"],
+  ["completeness", "M"],
+  ["code_quality", "Q"],
+  ["test_coverage", "T"],
+  ["security", "S"],
+  ["resilience", "R"],
+];
+
+function ScoreLine({
+  scores,
+  thresholds,
+  contentWidth,
+}: {
+  scores: EvaluatorScores;
+  thresholds?: EvaluatorScores;
+  contentWidth: number;
+}): React.ReactElement {
+  // Each chip ~6 chars ("C:92 "), 6 chips = 36 chars + 2 indent = 38.
+  // If panel is too narrow, drop optional fields (S, R) first, then to single line.
+  const budget = Math.max(0, contentWidth - 2);
+  const present = SCORE_FIELDS.filter(([f]) => typeof scores[f] === "number");
+  const fitsAll = present.length * 6 <= budget;
+  const visible = fitsAll ? present : present.slice(0, Math.max(0, Math.floor(budget / 6)));
+  return (
+    <Box>
+      <Text color={theme.dim}>{"  "}</Text>
+      {visible.map(([field, label]) => {
+        const value = scores[field] as number;
+        const threshold = thresholds?.[field];
+        const passColor =
+          threshold === undefined
+            ? theme.text
+            : value >= threshold
+            ? theme.success
+            : theme.error;
+        return (
+          <Text key={field} color={passColor}>
+            {`${label}:${value} `}
+          </Text>
+        );
+      })}
+    </Box>
+  );
 }
 
 function formatElapsed(event: SubagentEvent): string {

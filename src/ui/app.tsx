@@ -299,8 +299,9 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
   const sprint = selectedSprint ? state.sprints.find((s) => s.id === selectedSprint) : null;
 
   // Compute per-panel content width hints so each panel's text adapts to layout.
-  // Account for: panel border (2) + paddingX=1 (2) = 4 overhead per panel,
-  // plus 1-col margin between panels in row layouts.
+  // Panel overhead: border (2) + paddingX=1 (2) = 4 chars per panel.
+  // Sprint table has the most horizontal content (5 columns), so it gets the
+  // biggest weight. Activity log is narrow rows. Live panel sits in the middle.
   const PANEL_OVERHEAD = 4;
   let sprintContentWidth: number;
   let activityContentWidth: number;
@@ -311,16 +312,24 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     activityContentWidth = sprintContentWidth;
     liveContentWidth = sprintContentWidth;
   } else if (isWide) {
-    // Three columns: split terminal width evenly minus margins (2 separators of 1 col).
-    const each = Math.floor((columns - 2) / 3);
-    sprintContentWidth = Math.max(20, each - PANEL_OVERHEAD);
-    activityContentWidth = sprintContentWidth;
-    liveContentWidth = sprintContentWidth;
+    // Three columns at >=120 cols. Allocate by weight 4:3:4 (sprint:activity:live)
+    // so the sprint table never clips its Score/Eval columns and the live panel
+    // has room for the score chips on one line.
+    const total = columns - 2; // 2 inter-panel margins
+    const sprintW = Math.floor((total * 4) / 11);
+    const activityW = Math.floor((total * 3) / 11);
+    const liveW = total - sprintW - activityW;
+    sprintContentWidth = Math.max(40, sprintW - PANEL_OVERHEAD);
+    activityContentWidth = Math.max(24, activityW - PANEL_OVERHEAD);
+    liveContentWidth = Math.max(36, liveW - PANEL_OVERHEAD);
   } else {
-    // Two columns: 50/50 split minus 1 margin.
-    const each = Math.floor((columns - 1) / 2);
-    sprintContentWidth = Math.max(20, each - PANEL_OVERHEAD);
-    activityContentWidth = sprintContentWidth;
+    // Two columns at 80–119 cols. Sprint takes 60%, activity 40% — same logic:
+    // sprint table needs more horizontal room than activity log.
+    const total = columns - 1; // 1 inter-panel margin
+    const sprintW = Math.floor((total * 3) / 5);
+    const activityW = total - sprintW;
+    sprintContentWidth = Math.max(40, sprintW - PANEL_OVERHEAD);
+    activityContentWidth = Math.max(20, activityW - PANEL_OVERHEAD);
     liveContentWidth = sprintContentWidth;
   }
 
@@ -355,7 +364,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
             </Box>
           ) : (
             <Box flexDirection="row" width="100%">
-              <Box flexGrow={1} flexShrink={1}>
+              <Box width={sprintContentWidth + 4} flexShrink={0}>
                 <SprintTable
                   sprints={state.sprints}
                   maxRows={maxSprintRows}
@@ -363,7 +372,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
                   contentWidth={sprintContentWidth}
                 />
               </Box>
-              <Box marginLeft={1} flexGrow={1} flexShrink={1}>
+              <Box marginLeft={1} width={activityContentWidth + 4} flexShrink={0}>
                 <ActivityLog
                   activity={state.activity}
                   limit={rows > 30 ? 16 : 10}
