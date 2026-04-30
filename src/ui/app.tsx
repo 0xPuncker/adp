@@ -78,6 +78,18 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
           }
         }
       }
+
+      // Live correlation: any sub-agent currently running against a sprint flips
+      // that sprint's status to "build"/"evaluating" — gives the user real-time
+      // visibility into in-progress work without waiting for state.json to update.
+      const runningEvents = live.events.filter((e) => e.status === "running" && e.sprintId !== null);
+      for (const ev of runningEvents) {
+        const sp = s.sprints.find((x) => x.id === ev.sprintId);
+        if (!sp) continue;
+        // Only override unscored sprints — don't downgrade a "done" sprint.
+        if (sp.score !== null) continue;
+        sp.status = ev.classified === "evaluator" ? "evaluating" : "build";
+      }
       // Merge session activity (real-time from JSONL)
       const sessionActivity = await readSessionActivity(cwd);
       if (sessionActivity.length > 0) {
@@ -100,6 +112,25 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     const timer = setInterval(load, refreshInterval);
     return () => clearInterval(timer);
   }, []);
+
+  // Re-merge whenever the live watcher emits a new event so in-progress sprints
+  // appear within the watcher's latency (~200ms) instead of waiting for the 3s tick.
+  useEffect(() => {
+    if (!state) return;
+    const next = { ...state, sprints: state.sprints.map((sp) => ({ ...sp })) };
+    const runningEvents = live.events.filter((e) => e.status === "running" && e.sprintId !== null);
+    let changed = false;
+    for (const ev of runningEvents) {
+      const sp = next.sprints.find((x) => x.id === ev.sprintId);
+      if (!sp || sp.score !== null) continue;
+      const desired = ev.classified === "evaluator" ? "evaluating" : "build";
+      if (sp.status !== desired) {
+        sp.status = desired;
+        changed = true;
+      }
+    }
+    if (changed) setState(next);
+  }, [live.events]);
 
   // Clear feedback after 3s
   useEffect(() => {

@@ -17,6 +17,19 @@ interface SprintTableProps {
 
 const PAGE_SIZE = 10;
 
+// Column widths chosen so the data row aligns with the header row regardless of
+// the panel width. When `contentWidth` shrinks past breakpoints, columns drop:
+//   < 35 cols  →  id + status icon + task   (compact)
+//   35–49 cols →  id + status + score + task
+//   >= 50 cols →  + eval column
+const COL = {
+  id: 4,
+  status: 12,
+  statusCompact: 3, // icon + space when there's no room for the word
+  score: 7,
+  eval: 14,
+} as const;
+
 export function SprintTable({
   sprints,
   maxRows,
@@ -26,11 +39,13 @@ export function SprintTable({
   const limit = maxRows ?? PAGE_SIZE;
   const needsScroll = sprints.length > limit;
   const [scrollOffset, setScrollOffset] = useState(0);
-  // Drop the Eval column when content is too narrow to fit it without clipping the task.
-  // Layout: id(4) + status(12) + score(7) + eval(16) = 39 fixed, leaving 21+ for task.
-  // Without eval: 4 + 12 + 7 = 23 fixed, leaving 37+ for task. Threshold ~50 cols.
+
+  const hasScore = contentWidth >= 35;
   const hasEval = contentWidth >= 50 && sprints.some((s) => s.evaluator_scores !== null);
-  const taskBudget = Math.max(8, contentWidth - (hasEval ? 39 : 23));
+  const compactStatus = contentWidth < 28;
+  const statusW = compactStatus ? COL.statusCompact : COL.status;
+  const fixedW = COL.id + statusW + (hasScore ? COL.score : 0) + (hasEval ? COL.eval : 0);
+  const taskW = Math.max(6, contentWidth - fixedW);
 
   // Auto-scroll to bottom when new sprints are added
   useEffect(() => {
@@ -77,13 +92,13 @@ export function SprintTable({
         <Text color={theme.dim}>No sprints yet. Run adp to start.</Text>
       ) : (
         <Box flexDirection="column">
-          {/* Header */}
+          {/* Header — column widths match data rows so labels align under values. */}
           <Box>
-            <Text color={theme.dim}>
-              {"#".padEnd(4)}{"Status".padEnd(12)}{"Score".padEnd(7)}
-              {hasEval && "Eval".padEnd(16)}
-              Task
-            </Text>
+            <Box width={COL.id}><Text color={theme.dim}>#</Text></Box>
+            <Box width={statusW}><Text color={theme.dim}>{compactStatus ? "·" : "Status"}</Text></Box>
+            {hasScore && <Box width={COL.score}><Text color={theme.dim}>Score</Text></Box>}
+            {hasEval && <Box width={COL.eval}><Text color={theme.dim}>Eval</Text></Box>}
+            <Box width={taskW}><Text color={theme.dim}>Task</Text></Box>
           </Box>
 
           {/* Scroll indicator top */}
@@ -99,32 +114,49 @@ export function SprintTable({
             const scoreVal = sprint.score;
             const score = scoreVal !== null && scoreVal !== undefined
               ? `${scoreVal}/100`
-              : " — ";
+              : "—";
             const scoreGood = scoreVal !== null && scoreVal !== undefined && scoreVal >= 85;
-            const task = sprint.task.length > taskBudget
-              ? sprint.task.slice(0, Math.max(0, taskBudget - 1)) + "…"
+            const taskTrim = sprint.task.length > taskW - 1
+              ? sprint.task.slice(0, Math.max(0, taskW - 2)) + "…"
               : sprint.task;
+            const isLive = sprint.status === "build" || sprint.status === "qa" || sprint.status === "evaluating";
+            const liveMark = isLive ? "▸ " : "";
 
-            // Evaluator mini-display: C:92 Q:85
+            // Evaluator mini-display: C:92 Q:85 (clipped to fit column).
             let evalDisplay = "";
             if (hasEval && sprint.evaluator_scores) {
               const e = sprint.evaluator_scores;
               evalDisplay = `C:${e.correctness} Q:${e.code_quality}`;
+              if (evalDisplay.length > COL.eval - 1) {
+                evalDisplay = evalDisplay.slice(0, COL.eval - 2) + "…";
+              }
             }
 
             return (
               <Box key={sprint.id}>
-                <Text color={theme.dim}>{String(sprint.id).padEnd(4)}</Text>
-                <Text color={color}>{`${icon} ${sprint.status}`.padEnd(12)}</Text>
-                <Text color={scoreGood ? theme.success : theme.text}>
-                  {score.padEnd(7)}
-                </Text>
-                {hasEval && (
-                  <Text color={sprint.evaluator_scores ? theme.accent : theme.dim}>
-                    {(evalDisplay || " — ").padEnd(16)}
+                <Box width={COL.id}>
+                  <Text color={theme.dim}>{liveMark}{sprint.id}</Text>
+                </Box>
+                <Box width={statusW}>
+                  <Text color={color}>
+                    {compactStatus ? icon : `${icon} ${sprint.status}`}
                   </Text>
+                </Box>
+                {hasScore && (
+                  <Box width={COL.score}>
+                    <Text color={scoreGood ? theme.success : theme.text}>{score}</Text>
+                  </Box>
                 )}
-                <Text color={theme.text}>{task}</Text>
+                {hasEval && (
+                  <Box width={COL.eval}>
+                    <Text color={sprint.evaluator_scores ? theme.accent : theme.dim}>
+                      {evalDisplay || "—"}
+                    </Text>
+                  </Box>
+                )}
+                <Box width={taskW}>
+                  <Text color={isLive ? theme.warning : theme.text}>{taskTrim}</Text>
+                </Box>
               </Box>
             );
           })}
