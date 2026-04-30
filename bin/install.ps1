@@ -24,14 +24,48 @@ $SkillOnly  = $env:ADP_SKILL_ONLY -eq "1"
 $DryRun     = $env:ADP_DRY_RUN -eq "1"
 $BaseUrl    = "https://raw.githubusercontent.com/$Repo/$Branch"
 
-function Write-Log  { param($Msg) Write-Host "  $Msg" }
-function Write-Ok   { param($Msg) Write-Host "  " -NoNewline; Write-Host "[ok]" -ForegroundColor Green -NoNewline; Write-Host " $Msg" }
-function Write-Warn { param($Msg) Write-Host "  " -NoNewline; Write-Host "[!]"  -ForegroundColor Yellow -NoNewline; Write-Host " $Msg" }
-function Write-Fail { param($Msg) Write-Host "  " -NoNewline; Write-Host "[x]"  -ForegroundColor Red -NoNewline; Write-Host " $Msg"; exit 1 }
+function Write-Log  { param($Msg) Write-Host "  $Msg" -ForegroundColor Gray }
+function Write-Ok   { param($Msg) Write-Host "  " -NoNewline; Write-Host "[ok]" -ForegroundColor Green -NoNewline; Write-Host " $Msg" -ForegroundColor Gray }
+function Write-Warn { param($Msg) Write-Host "  " -NoNewline; Write-Host "[!]"  -ForegroundColor Yellow -NoNewline; Write-Host " $Msg" -ForegroundColor Gray }
+function Write-Fail { param($Msg) Write-Host "  " -NoNewline; Write-Host "[x]"  -ForegroundColor Red -NoNewline; Write-Host " $Msg" -ForegroundColor Gray; exit 1 }
+
+# Render a rounded ASCII panel matching the TUI's <Panel/> visual language.
+# PowerShell 5.1 reads non-BOM UTF-8 as Windows-1252, so we use ASCII box chars.
+function Write-Panel {
+  param(
+    [string]$Title,
+    [System.ConsoleColor]$TitleColor = "Yellow",
+    [string[]]$Lines,
+    [int]$Width = 64
+  )
+  $inner = $Width - 4
+  $border = "+" + ("-" * ($Width - 2)) + "+"
+  Write-Host $border -ForegroundColor DarkGray
+  if ($Title) {
+    Write-Host "| " -ForegroundColor DarkGray -NoNewline
+    Write-Host $Title.PadRight($inner) -ForegroundColor $TitleColor -NoNewline
+    Write-Host " |" -ForegroundColor DarkGray
+    Write-Host ("| " + (" " * $inner) + " |") -ForegroundColor DarkGray
+  }
+  foreach ($line in $Lines) {
+    $clipped = if ($line.Length -gt $inner) { $line.Substring(0, $inner - 1) + "~" } else { $line }
+    Write-Host "| " -ForegroundColor DarkGray -NoNewline
+    Write-Host $clipped.PadRight($inner) -ForegroundColor Gray -NoNewline
+    Write-Host " |" -ForegroundColor DarkGray
+  }
+  Write-Host $border -ForegroundColor DarkGray
+}
 
 Write-Host ""
-Write-Host "  ADP - Autonomous Development Pipeline"
-Write-Host "  ----------------------------------------"
+Write-Panel `
+  -Title "ADP - Autonomous Development Pipeline" `
+  -TitleColor "Yellow" `
+  -Lines @(
+    "Spec-to-code sprints with feedback control",
+    "",
+    "Repo:   github.com/0xPuncker/adp",
+    "Branch: $Branch"
+  )
 Write-Host ""
 
 if ($DryRun) {
@@ -164,10 +198,12 @@ if ($SkillOnly) {
 
 # Done
 Write-Host ""
-Write-Host "  ----------------------------------------"
-Write-Ok "ADP ready"
-Write-Host ""
-Write-Log "Usage:"
-Write-Log "  Skill:  open Claude Code in any project, say 'adp init'"
-Write-Log "  CLI:    adp status | adp sensors | adp evaluate | adp help"
+Write-Panel `
+  -Title "Done - ADP ready" `
+  -TitleColor "Green" `
+  -Lines @(
+    "Skill: open Claude Code in any project, say 'adp init'",
+    "CLI:   adp status | adp sensors | adp evaluate | adp help",
+    "TUI:   adp tui  (or 'adp dashboard')"
+  )
 Write-Host ""
