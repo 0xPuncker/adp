@@ -1,0 +1,181 @@
+import React from "react";
+import { Box, Text } from "ink";
+import { theme } from "../theme.js";
+import { Panel } from "./panel.js";
+import type { SubagentEvent, SubagentClassification } from "../../live/types.js";
+import type { EvaluatorScores } from "../../types.js";
+
+interface LiveAgentPanelProps {
+  events: SubagentEvent[];
+  sensorTail: string[];
+  status: "watching" | "degraded" | "idle";
+  degradedReason?: string | null;
+  thresholds?: EvaluatorScores;
+  activeSprintId?: number | null;
+  /** Cap visible sub-agent events. Defaults to last 6. */
+  maxEvents?: number;
+  /** Cap rendered sensor tail lines. Defaults to 8. */
+  maxSensorLines?: number;
+}
+
+const CLASSIFY_ICON: Record<SubagentClassification, string> = {
+  evaluator: "▣",
+  "contract-review": "◆",
+  worktree: "⌥",
+  unknown: "·",
+};
+
+const CLASSIFY_LABEL: Record<SubagentClassification, string> = {
+  evaluator: "evaluator",
+  "contract-review": "contract",
+  worktree: "worktree",
+  unknown: "agent",
+};
+
+export function LiveAgentPanel({
+  events,
+  sensorTail,
+  status,
+  degradedReason,
+  thresholds,
+  activeSprintId,
+  maxEvents = 6,
+  maxSensorLines = 8,
+}: LiveAgentPanelProps): React.ReactElement {
+  const visible = events.slice(-maxEvents);
+  const tail = sensorTail.slice(-maxSensorLines);
+
+  return (
+    <Panel title="Live Agents" titleColor={theme.accent} flexGrow={1}>
+      <HeaderLine status={status} degradedReason={degradedReason} activeSprintId={activeSprintId ?? null} />
+      {visible.length === 0 ? (
+        <Text color={theme.dim}>Waiting for sub-agent activity…</Text>
+      ) : (
+        <Box flexDirection="column">
+          {visible.map((e) => (
+            <SubagentRow key={e.agentId} event={e} thresholds={thresholds} />
+          ))}
+        </Box>
+      )}
+      {tail.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color={theme.subtle}>── sensor tail ──</Text>
+          {tail.map((line, i) => (
+            <Text key={i} color={theme.dim}>
+              {line.length > 80 ? line.slice(0, 79) + "…" : line || " "}
+            </Text>
+          ))}
+        </Box>
+      )}
+    </Panel>
+  );
+}
+
+function HeaderLine({
+  status,
+  degradedReason,
+  activeSprintId,
+}: {
+  status: "watching" | "degraded" | "idle";
+  degradedReason: string | null | undefined;
+  activeSprintId: number | null;
+}): React.ReactElement {
+  if (status === "degraded") {
+    return (
+      <Box>
+        <Text color={theme.warning}>degraded — </Text>
+        <Text color={theme.dim}>{degradedReason ?? "polling fallback"}</Text>
+      </Box>
+    );
+  }
+  return (
+    <Box>
+      <Text color={status === "watching" ? theme.success : theme.dim}>
+        {status === "watching" ? "● live" : "○ idle"}
+      </Text>
+      {activeSprintId !== null && (
+        <Text color={theme.dim}>{`  · sprint ${activeSprintId}`}</Text>
+      )}
+    </Box>
+  );
+}
+
+function SubagentRow({
+  event,
+  thresholds,
+}: {
+  event: SubagentEvent;
+  thresholds?: EvaluatorScores;
+}): React.ReactElement {
+  const elapsed = formatElapsed(event);
+  const stateColor =
+    event.status === "running"
+      ? theme.warning
+      : event.verdict.pass === false
+      ? theme.error
+      : event.verdict.pass === true
+      ? theme.success
+      : theme.dim;
+  const promptSnippet = event.prompt.length > 50 ? event.prompt.slice(0, 47) + "..." : event.prompt;
+  const sprintSuffix = event.sprintId !== null ? ` (sp ${event.sprintId})` : "";
+  return (
+    <Box flexDirection="column" marginBottom={0}>
+      <Box>
+        <Text color={stateColor}>
+          {CLASSIFY_ICON[event.classified]} {CLASSIFY_LABEL[event.classified]}
+          {sprintSuffix}
+        </Text>
+        <Text color={theme.dim}>  {elapsed}</Text>
+      </Box>
+      <Box>
+        <Text color={theme.dim}>  {promptSnippet}</Text>
+      </Box>
+      {event.verdict.parsedScores && (
+        <Box flexWrap="wrap">
+          {renderScores(event.verdict.parsedScores, thresholds)}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function renderScores(scores: EvaluatorScores, thresholds?: EvaluatorScores): React.ReactElement[] {
+  const fields: Array<[keyof EvaluatorScores, string]> = [
+    ["correctness", "C"],
+    ["completeness", "M"],
+    ["code_quality", "Q"],
+    ["test_coverage", "T"],
+    ["security", "S"],
+    ["resilience", "R"],
+  ];
+  const out: React.ReactElement[] = [<Text key="prefix" color={theme.dim}>  </Text>];
+  for (const [field, label] of fields) {
+    const value = scores[field];
+    if (typeof value !== "number") continue;
+    const threshold = thresholds?.[field];
+    const passColor =
+      threshold === undefined
+        ? theme.text
+        : value >= threshold
+        ? theme.success
+        : theme.error;
+    out.push(
+      <Text key={field} color={passColor}>
+        {`${label}:${value} `}
+      </Text>,
+    );
+  }
+  return out;
+}
+
+function formatElapsed(event: SubagentEvent): string {
+  if (!event.startedAt) return "";
+  const start = new Date(event.startedAt).getTime();
+  if (!Number.isFinite(start)) return "";
+  const end = event.endedAt ? new Date(event.endedAt).getTime() : Date.now();
+  const seconds = Math.max(0, Math.round((end - start) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m${s.toString().padStart(2, "0")}s`;
+}

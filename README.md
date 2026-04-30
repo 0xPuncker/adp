@@ -337,12 +337,29 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
 | `adp verify` | Run all sensors; report pass/fail |
 | `adp pause` | Snapshot to `HANDOFF.md`; stop gracefully |
 | `adp resume` | Read handoff + state; continue from the exact stopping point |
+| `adp tui` | Open the live dashboard (sprint table, activity log, live agent panel) |
 
 All commands are triggered in natural conversation with Claude Code — the agent
 reads `SKILL.md` and executes them using its built-in tools (Read, Write, Edit,
 Bash, Glob, Grep). There is no standalone CLI binary required.
 
 The optional runtime library (`src/`) is exported for programmatic use.
+
+### Live agent panel
+
+`adp tui` includes a **Live Agents** panel that tails the current Claude Code
+session's `subagents/` JSONL files in real time (~100ms latency via `chokidar`).
+Each sub-agent the orchestrator spawns — evaluator, contract reviewer, parallel
+worktree workers — is classified, scored against your `harness.yaml` thresholds,
+and rendered with elapsed time and prompt snippet.
+
+- Wide terminal (≥120 cols): three-column dashboard (sprints | activity | live).
+- Medium (90–119 cols): live panel hidden on the dashboard; press `4` or run
+  `/live` to focus the panel.
+- Narrow (<90 cols): live panel hidden entirely.
+
+If the active session JSONL can't be located, the panel renders a degraded
+banner and the rest of the dashboard keeps working.
 
 ---
 

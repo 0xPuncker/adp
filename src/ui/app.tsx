@@ -3,7 +3,7 @@ import { Box, Text, useApp, useInput } from "ink";
 import { StateManager } from "../state/manager.js";
 import { HarnessEngine } from "../harness/engine.js";
 import { loadHarnessConfig } from "../harness/config.js";
-import { computeFinalScore, checkThresholds, meetsMinScore } from "../evaluator/engine.js";
+import { computeFinalScore, checkThresholds } from "../evaluator/engine.js";
 import type { PipelineState, Sprint, EvaluatorScores } from "../types.js";
 import { readSessionSprints } from "../session/sprints.js";
 import { readSessionActivity } from "../session/activity.js";
@@ -17,13 +17,15 @@ import { StatusBar } from "./components/status-bar.js";
 import { UsagePanel } from "./components/usage-panel.js";
 import { CommandInput, COMMANDS } from "./components/command-input.js";
 import type { Command } from "./components/command-input.js";
+import { LiveAgentPanel } from "./components/live-agent-panel.js";
+import { useLiveEvents } from "./hooks/use-live-events.js";
 
 interface AppProps {
   cwd: string;
   refreshInterval?: number;
 }
 
-export type View = "dashboard" | "sensors" | "usage" | "help" | "sprint-detail";
+export type View = "dashboard" | "sensors" | "usage" | "live" | "help" | "sprint-detail";
 
 export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactElement {
   const { exit } = useApp();
@@ -33,7 +35,8 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
   const [commandActive, setCommandActive] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; color: string } | null>(null);
   const [selectedSprint, setSelectedSprint] = useState<number | null>(null);
-  const { columns, isNarrow, rows } = useTerminalSize();
+  const { columns, isNarrow, isVeryNarrow, isWide, rows } = useTerminalSize();
+  const live = useLiveEvents({ cwd });
 
   const stateManager = new StateManager(cwd);
   const harness = new HarnessEngine(cwd);
@@ -128,6 +131,11 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
       case "usage":
       case "u":
         setView("usage");
+        break;
+
+      case "live":
+      case "l":
+        setView("live");
         break;
 
       case "evaluate":
@@ -258,6 +266,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
     if (input === "1") setView("dashboard");
     if (input === "2") setView("sensors");
     if (input === "3") setView("usage");
+    if (input === "4") setView("live");
     if (input === "?") setView("help");
     if (input === "r") refresh();
     if (input === "e") handleCommand({ name: "evaluate", args: [], raw: "/evaluate" });
@@ -301,6 +310,16 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
               <Box marginTop={1}>
                 <ActivityLog activity={state.activity} limit={8} />
               </Box>
+              {!isVeryNarrow && (
+                <Box marginTop={1}>
+                  <LiveAgentPanel
+                    events={live.events}
+                    sensorTail={live.sensorTail}
+                    status={live.status}
+                    degradedReason={live.degradedReason}
+                  />
+                </Box>
+              )}
             </Box>
           ) : (
             <Box flexDirection="row" width="100%">
@@ -308,6 +327,16 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
               <Box marginLeft={1}>
                 <ActivityLog activity={state.activity} limit={rows > 30 ? 16 : 10} />
               </Box>
+              {isWide && (
+                <Box marginLeft={1} flexGrow={1}>
+                  <LiveAgentPanel
+                    events={live.events}
+                    sensorTail={live.sensorTail}
+                    status={live.status}
+                    degradedReason={live.degradedReason}
+                  />
+                </Box>
+              )}
             </Box>
           )
         )}
@@ -318,6 +347,17 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
 
         {view === "usage" && (
           <UsagePanel state={state} cwd={cwd} />
+        )}
+
+        {view === "live" && (
+          <LiveAgentPanel
+            events={live.events}
+            sensorTail={live.sensorTail}
+            status={live.status}
+            degradedReason={live.degradedReason}
+            maxEvents={20}
+            maxSensorLines={20}
+          />
         )}
 
         {view === "sprint-detail" && sprint && (
@@ -449,6 +489,10 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
               <Box>
                 <Text color={theme.accent} bold>{"3".padEnd(6)}</Text>
                 <Text color={theme.text}>Usage & Costs</Text>
+              </Box>
+              <Box>
+                <Text color={theme.accent} bold>{"4".padEnd(6)}</Text>
+                <Text color={theme.text}>Live agent panel</Text>
               </Box>
               <Box>
                 <Text color={theme.accent} bold>{"r".padEnd(6)}</Text>
