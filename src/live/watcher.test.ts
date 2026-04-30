@@ -52,13 +52,26 @@ async function waitFor<T>(predicate: () => T | undefined | null, timeoutMs = 200
 }
 
 describe("LiveWatcher", () => {
-  it("emits a degraded status when the dir does not exist", async () => {
+  it("emits an idle status when the dir does not yet exist (waits for it to appear)", async () => {
     const w = new LiveWatcher({ dir: subDir });
     let status: LiveWatcherStatus | null = null;
     w.on("status", (s) => (status = s));
     await w.start();
     expect(status).not.toBeNull();
-    expect(status!.kind).toBe("degraded");
+    expect(status!.kind).toBe("idle");
+    await w.close();
+  });
+
+  it("transitions from idle to watching once the dir appears", async () => {
+    const w = new LiveWatcher({ dir: subDir });
+    const seen: LiveWatcherStatus[] = [];
+    w.on("status", (s) => seen.push(s));
+    await w.start();
+    expect(seen.some((s) => s.kind === "idle")).toBe(true);
+
+    // Create the dir; the poller (2s) should pick it up.
+    mkdirSync(subDir);
+    await waitFor(() => seen.find((s) => s.kind === "watching") ?? null, 4000);
     await w.close();
   });
 

@@ -8,15 +8,29 @@ interface SprintTableProps {
   sprints: Sprint[];
   maxRows?: number;
   isActive?: boolean;
+  /**
+   * Inner content width hint (excluding panel border/padding). Drives column widths
+   * so the table never overflows or visually clips its neighbour panel.
+   */
+  contentWidth?: number;
 }
 
 const PAGE_SIZE = 10;
 
-export function SprintTable({ sprints, maxRows, isActive = true }: SprintTableProps): React.ReactElement {
+export function SprintTable({
+  sprints,
+  maxRows,
+  isActive = true,
+  contentWidth = 60,
+}: SprintTableProps): React.ReactElement {
   const limit = maxRows ?? PAGE_SIZE;
   const needsScroll = sprints.length > limit;
   const [scrollOffset, setScrollOffset] = useState(0);
-  const hasEval = sprints.some((s) => s.evaluator_scores !== null);
+  // Drop the Eval column when content is too narrow to fit it without clipping the task.
+  // Layout: id(4) + status(12) + score(7) + eval(16) = 39 fixed, leaving 21+ for task.
+  // Without eval: 4 + 12 + 7 = 23 fixed, leaving 37+ for task. Threshold ~50 cols.
+  const hasEval = contentWidth >= 50 && sprints.some((s) => s.evaluator_scores !== null);
+  const taskBudget = Math.max(8, contentWidth - (hasEval ? 39 : 23));
 
   // Auto-scroll to bottom when new sprints are added
   useEffect(() => {
@@ -87,8 +101,8 @@ export function SprintTable({ sprints, maxRows, isActive = true }: SprintTablePr
               ? `${scoreVal}/100`
               : " — ";
             const scoreGood = scoreVal !== null && scoreVal !== undefined && scoreVal >= 85;
-            const task = sprint.task.length > (hasEval ? 28 : 36)
-              ? sprint.task.slice(0, hasEval ? 25 : 33) + "..."
+            const task = sprint.task.length > taskBudget
+              ? sprint.task.slice(0, Math.max(0, taskBudget - 1)) + "…"
               : sprint.task;
 
             // Evaluator mini-display: C:92 Q:85

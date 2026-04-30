@@ -17,10 +17,12 @@ export interface UseLiveEventsOptions {
   sensorTailSize?: number;
 }
 
+export type LiveStatus = "watching" | "idle" | "degraded";
+
 export interface UseLiveEventsResult {
   events: SubagentEvent[];
   sensorTail: string[];
-  status: "watching" | "degraded" | "idle";
+  status: LiveStatus;
   degradedReason: string | null;
   appendSensorChunk: (chunk: SensorChunk) => void;
   clearSensorTail: () => void;
@@ -39,7 +41,7 @@ export function useLiveEvents(options: UseLiveEventsOptions): UseLiveEventsResul
   const { cwd, worktrees = [], evaluatorThresholds, sensorTailSize = DEFAULT_TAIL } = options;
   const [events, setEvents] = useState<SubagentEvent[]>([]);
   const [sensorTail, setSensorTail] = useState<string[]>([]);
-  const [status, setStatus] = useState<"watching" | "degraded" | "idle">("idle");
+  const [status, setStatus] = useState<LiveStatus>("idle");
   const [degradedReason, setDegradedReason] = useState<string | null>(null);
   const watcherRef = useRef<LiveWatcher | null>(null);
 
@@ -75,6 +77,9 @@ export function useLiveEvents(options: UseLiveEventsOptions): UseLiveEventsResul
       if (disposed) return;
       if (s.kind === "watching") {
         setStatus("watching");
+        setDegradedReason(null);
+      } else if (s.kind === "idle") {
+        setStatus("idle");
         setDegradedReason(null);
       } else {
         setStatus("degraded");

@@ -298,6 +298,32 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
   const maxSprintRows = rows > 30 ? undefined : rows - 16;
   const sprint = selectedSprint ? state.sprints.find((s) => s.id === selectedSprint) : null;
 
+  // Compute per-panel content width hints so each panel's text adapts to layout.
+  // Account for: panel border (2) + paddingX=1 (2) = 4 overhead per panel,
+  // plus 1-col margin between panels in row layouts.
+  const PANEL_OVERHEAD = 4;
+  let sprintContentWidth: number;
+  let activityContentWidth: number;
+  let liveContentWidth: number;
+  if (isNarrow) {
+    // Stacked — each panel uses full terminal width.
+    sprintContentWidth = Math.max(20, columns - PANEL_OVERHEAD);
+    activityContentWidth = sprintContentWidth;
+    liveContentWidth = sprintContentWidth;
+  } else if (isWide) {
+    // Three columns: split terminal width evenly minus margins (2 separators of 1 col).
+    const each = Math.floor((columns - 2) / 3);
+    sprintContentWidth = Math.max(20, each - PANEL_OVERHEAD);
+    activityContentWidth = sprintContentWidth;
+    liveContentWidth = sprintContentWidth;
+  } else {
+    // Two columns: 50/50 split minus 1 margin.
+    const each = Math.floor((columns - 1) / 2);
+    sprintContentWidth = Math.max(20, each - PANEL_OVERHEAD);
+    activityContentWidth = sprintContentWidth;
+    liveContentWidth = sprintContentWidth;
+  }
+
   return (
     <Box flexDirection="column" width={columns}>
       <Header state={state} lastRefresh={lastRefresh} cwd={cwd} />
@@ -306,9 +332,14 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
         {view === "dashboard" && (
           isNarrow ? (
             <Box flexDirection="column" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
+              <SprintTable
+                sprints={state.sprints}
+                maxRows={maxSprintRows}
+                isActive={!commandActive}
+                contentWidth={sprintContentWidth}
+              />
               <Box marginTop={1}>
-                <ActivityLog activity={state.activity} limit={8} />
+                <ActivityLog activity={state.activity} limit={8} contentWidth={activityContentWidth} />
               </Box>
               {!isVeryNarrow && (
                 <Box marginTop={1}>
@@ -317,23 +348,36 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
                     sensorTail={live.sensorTail}
                     status={live.status}
                     degradedReason={live.degradedReason}
+                    contentWidth={liveContentWidth}
                   />
                 </Box>
               )}
             </Box>
           ) : (
             <Box flexDirection="row" width="100%">
-              <SprintTable sprints={state.sprints} maxRows={maxSprintRows} isActive={!commandActive} />
-              <Box marginLeft={1}>
-                <ActivityLog activity={state.activity} limit={rows > 30 ? 16 : 10} />
+              <Box flexGrow={1} flexShrink={1}>
+                <SprintTable
+                  sprints={state.sprints}
+                  maxRows={maxSprintRows}
+                  isActive={!commandActive}
+                  contentWidth={sprintContentWidth}
+                />
+              </Box>
+              <Box marginLeft={1} flexGrow={1} flexShrink={1}>
+                <ActivityLog
+                  activity={state.activity}
+                  limit={rows > 30 ? 16 : 10}
+                  contentWidth={activityContentWidth}
+                />
               </Box>
               {isWide && (
-                <Box marginLeft={1} flexGrow={1}>
+                <Box marginLeft={1} flexGrow={1} flexShrink={1}>
                   <LiveAgentPanel
                     events={live.events}
                     sensorTail={live.sensorTail}
                     status={live.status}
                     degradedReason={live.degradedReason}
+                    contentWidth={liveContentWidth}
                   />
                 </Box>
               )}
@@ -357,6 +401,7 @@ export function App({ cwd, refreshInterval = 3000 }: AppProps): React.ReactEleme
             degradedReason={live.degradedReason}
             maxEvents={20}
             maxSensorLines={20}
+            contentWidth={Math.max(40, columns - PANEL_OVERHEAD)}
           />
         )}
 
