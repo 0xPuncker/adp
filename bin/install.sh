@@ -77,13 +77,15 @@ ok()   { printf '  %b✓%b %b%s%b\n' "$SUCCESS" "$RESET" "$TEXT" "$*" "$RESET"; 
 warn() { printf '  %b!%b %b%s%b\n' "$WARNING" "$RESET" "$TEXT" "$*" "$RESET"; }
 fail() { printf '  %b✗%b %b%s%b\n' "$ERROR" "$RESET" "$TEXT" "$*" "$RESET" >&2; exit 1; }
 
-echo ""
-panel "ADP — Autonomous Development Pipeline" "$BRAND" \
-  "$(printf '%b' "${DIM}Spec-to-code sprints with feedback control${RESET}")" \
-  "" \
-  "$(printf '%b' "${DIM}Repo:   ${RESET}${ACCENT}github.com/0xPuncker/adp${RESET}")" \
-  "$(printf '%b' "${DIM}Branch: ${RESET}${TEXT}${BRANCH}${RESET}")"
-echo ""
+if [ "$FORCE" != "1" ]; then
+  echo ""
+  panel "ADP — Autonomous Development Pipeline" "$BRAND" \
+    "$(printf '%b' "${DIM}Spec-to-code sprints with feedback control${RESET}")" \
+    "" \
+    "$(printf '%b' "${DIM}Repo:   ${RESET}${ACCENT}github.com/0xPuncker/adp${RESET}")" \
+    "$(printf '%b' "${DIM}Branch: ${RESET}${TEXT}${BRANCH}${RESET}")"
+  echo ""
+fi
 
 if [ "$DRY_RUN" = "1" ]; then
   warn "DRY RUN — no changes will be made"
@@ -192,9 +194,11 @@ else
 fi
 
 # ── Done ───────────────────────────────────────────────────────
-echo ""
-panel "Done — ADP ready" "$SUCCESS" \
-  "$(printf '%b' "${DIM}Skill:${RESET} ${TEXT}open Claude Code in any project, say \"adp init\"${RESET}")" \
-  "$(printf '%b' "${DIM}CLI:  ${RESET} ${TEXT}adp status | adp sensors | adp evaluate | adp help${RESET}")" \
-  "$(printf '%b' "${DIM}TUI:  ${RESET} ${TEXT}adp tui${RESET} ${SUBTLE}(or 'adp dashboard')${RESET}")"
-echo ""
+if [ "$FORCE" != "1" ]; then
+  echo ""
+  panel "Done — ADP ready" "$SUCCESS" \
+    "$(printf '%b' "${DIM}Skill:${RESET} ${TEXT}open Claude Code in any project, say \"adp init\"${RESET}")" \
+    "$(printf '%b' "${DIM}CLI:  ${RESET} ${TEXT}adp status | adp sensors | adp evaluate | adp help${RESET}")" \
+    "$(printf '%b' "${DIM}TUI:  ${RESET} ${TEXT}adp tui${RESET} ${SUBTLE}(or 'adp dashboard')${RESET}")"
+  echo ""
+fi

@@ -56,17 +56,19 @@ function Write-Panel {
   Write-Host $border -ForegroundColor DarkGray
 }
 
-Write-Host ""
-Write-Panel `
-  -Title "ADP - Autonomous Development Pipeline" `
-  -TitleColor "Yellow" `
-  -Lines @(
-    "Spec-to-code sprints with feedback control",
-    "",
-    "Repo:   github.com/0xPuncker/adp",
-    "Branch: $Branch"
-  )
-Write-Host ""
+if (-not $Force) {
+  Write-Host ""
+  Write-Panel `
+    -Title "ADP - Autonomous Development Pipeline" `
+    -TitleColor "Yellow" `
+    -Lines @(
+      "Spec-to-code sprints with feedback control",
+      "",
+      "Repo:   github.com/0xPuncker/adp",
+      "Branch: $Branch"
+    )
+  Write-Host ""
+}
 
 if ($DryRun) {
   Write-Warn "DRY RUN - no changes will be made"
@@ -197,13 +199,15 @@ if ($SkillOnly) {
 }
 
 # Done
-Write-Host ""
-Write-Panel `
-  -Title "Done - ADP ready" `
-  -TitleColor "Green" `
-  -Lines @(
-    "Skill: open Claude Code in any project, say 'adp init'",
-    "CLI:   adp status | adp sensors | adp evaluate | adp help",
-    "TUI:   adp tui  (or 'adp dashboard')"
-  )
-Write-Host ""
+if (-not $Force) {
+  Write-Host ""
+  Write-Panel `
+    -Title "Done - ADP ready" `
+    -TitleColor "Green" `
+    -Lines @(
+      "Skill: open Claude Code in any project, say 'adp init'",
+      "CLI:   adp status | adp sensors | adp evaluate | adp help",
+      "TUI:   adp tui  (or 'adp dashboard')"
+    )
+  Write-Host ""
+}
