@@ -203,6 +203,11 @@ to execute every phase, run sensors, and manage state.
      clarify: critical              # "never" | "critical" (default) | "always"
      output: minimal                # "minimal" (default) | "verbose"
 
+   git:                              # built-in — no declaration needed
+     branch: feat/{feature-slug}     # created at Step 0, all commits land here
+     push:  gated                    # git push -u origin feat/* (ask once at end)
+     pr:    gated                    # gh pr create (ask once at end)
+
    actions:                          # external-world commands — see Action Zones
      db_up:
        command: docker compose up -d postgres
@@ -212,9 +217,6 @@ to execute every phase, run sensors, and manage state.
        command: npx prisma migrate dev
        zone: gated
        depends_on: [db_up]
-     push:
-       command: git push
-       zone: gated
      deploy:
        command: flyctl deploy
        zone: always_ask
@@ -388,6 +390,11 @@ Nothing else stops the pipeline mid-run.
 2. **Auto-generate PROJECT.md** if `.specs/project/PROJECT.md` does not exist
    (see [Project-Level Spec](#project-level-spec-auto-generation)).
 3. Load PROJECT.md into context — it informs SPECIFY and reduces clarification needs.
+4. **Feature branch** — All work happens on a dedicated branch, never directly on main:
+   - Derive slug: lowercase, hyphens only — e.g. `feat/user-auth`, `feat/live-agents`
+   - If `state.json → branch` exists (resuming), check it out: `git checkout {branch}`
+   - Otherwise create it from current HEAD: `git checkout -b feat/{feature-slug}`
+   - Record in `state.json → branch: "feat/{feature-slug}"`
 
 ### Step 1: Auto-Size Complexity
 
@@ -768,7 +775,25 @@ ADP Complete: {feature}
  Avg score: 89/100   REQ coverage: 3/3 ✓   Sensors: all ✓
 
 Specs: .specs/features/{feature}/
+Branch: feat/{feature-slug}
 ```
+
+**Then push + open PR (Gated — ask once):**
+
+```bash
+git push -u origin feat/{feature-slug}
+gh pr create \
+  --title "{feature}: {one-line summary of what was built}" \
+  --body "## Summary
+- {bullet: what REQs were implemented}
+- {bullet: key design decisions}
+
+## Test plan
+- Sensors: typecheck ✓ lint ✓ test ✓
+- {any manual steps the reviewer should take}"
+```
+
+Log the PR URL to `state.json → activity[]` as `type: "pr_opened"`.
 
 That is the entire output. No "I hope this helps." No "Let me know if you have questions."
 
@@ -843,10 +868,12 @@ Triggered by: `adp run "quick: {description}"` or auto-classified Small.
 
 **Flow:**
 1. Create `.specs/quick/NNN-slug/TASK.md` with: description, files, approach, verify.
-2. Implement.
-3. Run sensors.
-4. Commit: `fix(scope): summary` (or `feat`, `refactor`, etc.).
-5. Write `.specs/quick/NNN-slug/SUMMARY.md` — one paragraph + commit SHA.
+2. `git checkout -b feat/{slug}` (Free).
+3. Implement.
+4. Run sensors.
+5. Commit: `fix(scope): summary` (or `feat`, `refactor`, etc.).
+6. Write `.specs/quick/NNN-slug/SUMMARY.md` — one paragraph + commit SHA.
+7. `git push -u origin feat/{slug}` + `gh pr create` (Gated — ask once).
 
 Skip Specify/Design/Tasks phases entirely.
 
@@ -1128,6 +1155,7 @@ of `adp run` if any completed sprints have `score: null`.
 # HANDOFF — {timestamp}
 
 **Feature:** {name}
+**Branch:** feat/{feature-slug}
 **Phase:** {current phase}
 **Complexity:** {sizing}
 
@@ -1283,9 +1311,9 @@ unprompted.
 
 | Zone | What it covers | Policy |
 |------|---------------|--------|
-| 🟢 **Free** | Read/Write/Edit, Grep/Glob, sensor commands from `harness.yaml`, `git add`, `git commit` (local) | Run without asking |
-| 🟡 **Gated** | `docker run` / `docker compose up`, `prisma migrate dev`, `npm install <new-dep>`, `git push`, external-API calls with cost or rate-limit impact | Declared in `harness.yaml → actions:`. Agent asks once per session OR obeys `auto_approve: true` per action |
-| 🔴 **Always ask** | `git push --force`, `git reset --hard`, `prisma migrate reset`, opening/closing GitHub PRs or issues, deploys (`kubectl apply`, `flyctl deploy`), dropping tables, deleting branches or cloud resources | Agent proposes, user must confirm each time. `auto_approve` has no effect |
+| 🟢 **Free** | Read/Write/Edit, Grep/Glob, sensor commands from `harness.yaml`, `git add`, `git commit` (local), `git checkout -b feat/*` (feature branch creation) | Run without asking |
+| 🟡 **Gated** | `docker run` / `docker compose up`, `prisma migrate dev`, `npm install <new-dep>`, `git push origin feat/*` (feature branch push), `gh pr create` (open PR), external-API calls with cost or rate-limit impact | Ask once per session OR obeys `auto_approve: true`. `git push` + `gh pr create` are built-in end-of-run actions — no `harness.yaml` declaration needed |
+| 🔴 **Always ask** | `git push --force`, `git reset --hard`, `git push origin main` (direct main push), `prisma migrate reset`, merging/closing PRs, deploys (`kubectl apply`, `flyctl deploy`), dropping tables, deleting branches or cloud resources | Agent proposes, user must confirm each time. `auto_approve` has no effect |
 
 **Rules**:
 
