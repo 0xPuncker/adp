@@ -11,9 +11,9 @@ typecheck, test) enforced at every boundary.
 - **Runtime layer** (`src/`) — TypeScript helpers for loading guides, running
   sensors, and persisting pipeline state.
 
-> Inspired by **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)**.
-> ADP adds a computational harness (live sensors, scoring, stuck detection) on top
-> of the four-phase spec-driven methodology.
+> Built on **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** (four-phase methodology)
+> and **[Karpathy's agent coding skills](https://github.com/forrestchang/andrej-karpathy-skills)** (execution discipline).
+> ADP adds a computational harness — live sensors, sprint scoring, stuck detection, and a feature-branch → PR workflow.
 
 ---
 
@@ -27,6 +27,7 @@ typecheck, test) enforced at every boundary.
 6. [Architecture](#architecture)
 7. [Templates](#templates)
 8. [Development](#development)
+9. [Influences](#influences)
 
 ---
 
@@ -460,8 +461,32 @@ npx vitest run -t "passes on exit code 0"
 
 ---
 
+## Influences
+
+ADP is assembled from two complementary bodies of methodology, each contributing a distinct layer.
+
+### TLC Spec-Driven
+
+**[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** establishes the four-phase pipeline — **Specify → Design → Tasks → Execute** — that structures all ADP feature runs. It introduces the REQ-ID chain (requirements → tasks → commits → validation) and the feedforward guide pattern: generate context from your own codebase before each phase, not from a generic prior.
+
+ADP extends it with a **computational harness**: live sensors (typecheck / lint / test) enforced after every sprint, evaluator sub-agents that grade the output with fresh context, stuck detection when the same error repeats three times, and a feature-branch → PR workflow that makes the methodology machine-enforceable rather than advisory.
+
+### Karpathy's Agent Coding Skills
+
+**[Andrej Karpathy's coding guidelines](https://github.com/forrestchang/andrej-karpathy-skills)** encode four failure modes that LLMs consistently exhibit and the rules that prevent them. ADP adopts all four as hard execution-time constraints:
+
+| Principle | Failure it prevents | Where ADP enforces it |
+|-----------|--------------------|-----------------------|
+| **Think before coding** | Wrong assumptions baked in before checking | Clarification Gate — resolves from codebase → docs → industry standard before asking; at most one question per run |
+| **Simplicity first** | Over-engineering beyond what the spec requires | Code Minimalism rule — no speculative features, no single-use abstractions, no impossible-scenario error handling |
+| **Surgical changes** | Drive-by improvements that corrupt diffs and break review | Scope Lock + Code Minimalism — touch only task files; match existing style; clean up only your own mess |
+| **Goal-driven execution** | Stopping at "it seems to work" | Sprint Contract acceptance criteria + sensor gate — build until every criterion is verifiable, not until effort is expended |
+
+---
+
 ## References
 
-- **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** — the four-phase spec-driven methodology (Specify → Design → Tasks → Execute) that ADP is built on. ADP extends it with a computational harness: live sensors, sprint scoring, stuck detection, and a feature-branch → PR workflow.
+- **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** — the four-phase spec-driven methodology (Specify → Design → Tasks → Execute) that ADP is built on.
+- **[Karpathy's Agent Coding Skills](https://github.com/forrestchang/andrej-karpathy-skills)** — four LLM coding discipline rules (think before coding, simplicity first, surgical changes, goal-driven execution) adopted by ADP as hard constraints.
 - **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/)** — commit message convention used by ADP.
 - **[Anthropic — Harness Design for Long-Running Apps](https://www.anthropic.com/research/building-effective-agents)** — the evaluator-as-separate-agent principle that underpins ADP's QA layer.

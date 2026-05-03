@@ -1303,6 +1303,28 @@ During Execute, touch ONLY the files in the current task's `Files:` list.
 Any out-of-scope finding (bug, refactor, idea) → `STATE.md → Deferred Ideas`.
 Do not expand the current commit.
 
+### Code Minimalism
+
+Write the minimum code that satisfies the acceptance criteria. Nothing more.
+
+- **No speculative features** — don't add what the REQ doesn't specify. Future requirements belong in the spec, not the implementation.
+- **No premature abstractions** — if a helper is used in only one place, inline it.
+- **No impossible-scenario error handling** — only validate at real system boundaries (user input, external APIs). Trust internal code and framework guarantees.
+- **Surgical edits only** — don't improve adjacent code, comments, or formatting unless they are directly required by this task.
+- **Match existing style** — even if you'd choose differently. Consistency outweighs personal preference.
+- **Clean up only your own mess** — remove only imports, variables, or functions that YOUR changes made unused.
+
+If a senior engineer would say "this is more than the task required" — remove it.
+
+### Goal-Driven Verification
+
+Transform each task from an imperative instruction into a verifiable outcome before building.
+
+Instead of: "Add email validation"
+Think: "Email validation rejects invalid addresses per REQ-01.2 — proven by a unit test that fails without the change and passes after it."
+
+The sprint contract's **Acceptance Criteria** are the definition of done. Build until every criterion is checkable. If a criterion can't be verified by a sensor or a concrete manual step, rewrite it until it can. Do not stop at "it seems to work" — run the sensor suite and confirm each criterion passes.
+
 ### Action Zones
 
 Autonomy is **scoped to code, not infrastructure**. Every shell command falls
