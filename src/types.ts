@@ -139,6 +139,24 @@ export interface DesignBundle {
   notes?: string;
 }
 
+// ─── Autonomy Configuration ──────────────────────────────────────
+
+/** When to ask the user clarifying questions during SPECIFY. */
+export type ClarifyMode =
+  | "never"    // make all decisions autonomously, log to context.md
+  | "critical" // ask only for truly unbridgeable ambiguity (default)
+  | "always";  // original behavior — ask for every gray area
+
+/** How much output to produce during execution. */
+export type OutputMode =
+  | "minimal"  // sprint start/end/score/blocker lines only (default)
+  | "verbose"; // each tool call and reasoning step
+
+export interface AutonomyConfig {
+  clarify: ClarifyMode;
+  output: OutputMode;
+}
+
 export interface HarnessConfig {
   mode: ExecutionMode;
   min_score: number;
@@ -149,6 +167,7 @@ export interface HarnessConfig {
   };
   evaluator: EvaluatorConfig;
   actions: Record<string, ActionConfig>;
+  autonomy: AutonomyConfig;
 }
 
 // ─── Git Workflow Types ──────────────────────────────────────────
