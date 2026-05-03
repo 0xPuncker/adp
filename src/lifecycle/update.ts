@@ -14,6 +14,7 @@ export interface UpdateResult {
   exitCode: number;
   shell: "powershell" | "bash";
   command: string;
+  sha: string | null;
 }
 
 const REPO = "0xPuncker/adp";
@@ -26,11 +27,31 @@ const REPO = "0xPuncker/adp";
  *
  * Sets ADP_FORCE=1 so the installer doesn't prompt for overwrite.
  */
+export async function fetchLatestSha(branch: string): Promise<string | null> {
+  try {
+    const url = `https://api.github.com/repos/${REPO}/git/ref/heads/${branch}`;
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { object?: { sha?: string } };
+    const sha = data.object?.sha;
+    return typeof sha === "string" ? sha.slice(0, 7) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runUpdate(opts: UpdateOptions = {}): Promise<UpdateResult> {
   const branch = opts.branch ?? "main";
   const force = opts.force ?? true;
   const info = opts.platformInfo ?? detectPlatform();
   const runner = opts.runInstaller ?? defaultRunInstaller;
+
+  const sha = await fetchLatestSha(branch);
 
   const baseUrl = `https://raw.githubusercontent.com/${REPO}/${branch}/bin`;
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -51,7 +72,7 @@ export async function runUpdate(opts: UpdateOptions = {}): Promise<UpdateResult>
   }
 
   const exitCode = await runner(cmd, args, env);
-  return { exitCode, shell: info.shell, command: cmd };
+  return { exitCode, shell: info.shell, command: cmd, sha };
 }
 
 function defaultRunInstaller(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<number> {

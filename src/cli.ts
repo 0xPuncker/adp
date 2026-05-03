@@ -16,7 +16,7 @@ import { TemplateCatalog } from "./templates/catalog.js";
 import { parseTasks } from "./tasks/parser.js";
 import { validateDag } from "./tasks/dag.js";
 import { WorktreeManager } from "./worktree/manager.js";
-import { runUpdate } from "./lifecycle/update.js";
+import { runUpdate, fetchLatestSha } from "./lifecycle/update.js";
 import { runUninstall } from "./lifecycle/uninstall.js";
 import { banner, box, divider, kv, ok, fail, info, bullet, palette, print } from "./cli/branding.js";
 import { readFile } from "node:fs/promises";
@@ -761,14 +761,19 @@ async function runUpdateCommand(): Promise<void> {
   const branchIdx = args.indexOf("--branch");
   const branch = branchIdx >= 0 ? args[branchIdx + 1] : "main";
 
+  const sha = await fetchLatestSha(branch);
+
+  const kvPairs: [string, string][] = [
+    ["Branch", branch],
+    ...(sha ? [["Commit", sha] as [string, string]] : []),
+    ["Source", `github.com/0xPuncker/adp`],
+  ];
+
   print(
     banner("ADP — Update", "Re-run platform installer to upgrade"),
     box(
       [
-        kv([
-          ["Branch", branch],
-          ["Source", `github.com/0xPuncker/adp`],
-        ]),
+        kv(kvPairs),
         "",
         info("Will detect platform → run install.ps1 (Windows) or install.sh (Unix)."),
       ].join("\n").split("\n"),
@@ -779,9 +784,10 @@ async function runUpdateCommand(): Promise<void> {
   const result = await runUpdate({ branch });
 
   if (result.exitCode === 0) {
+    const shaLabel = result.sha ? ` — ${result.sha}` : "";
     print(
       box(
-        [ok(`Update complete via ${result.shell}`), info("Run `adp help` to verify the new version is wired up.")],
+        [ok(`Update complete via ${result.shell}${shaLabel}`), info("Run `adp help` to verify the new version is wired up.")],
         { title: "Done", titleColor: "success", borderColor: "success" },
       ),
     );
