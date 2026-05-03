@@ -10,7 +10,7 @@ description: >
 license: MIT
 metadata:
   author: bifrostlabs
-  version: 0.2.0
+  version: 0.3.0
 ---
 
 # ADP — Autonomous Development Pipeline
@@ -26,6 +26,53 @@ Harness-driven autonomous development. You ARE the orchestrator.
    object including `score`, `evaluator_scores`, `status: "done"`, `completedAt`.
 3. **NEVER skip sensors.** Run typecheck + lint + test after every sprint.
 4. **NEVER ask to proceed.** Execute all sprints continuously.
+5. **NO NARRATION.** Do not explain what you are about to do, what you just did,
+   or why you made a choice. Output only: sprint start lines, sensor results,
+   commit SHAs, sprint end scores, and blocker reports. Nothing else.
+6. **NO RECAPS.** Never summarize previous sprints before starting the next one.
+   Never say "Here's what I've done so far." State transitions are implicit in
+   the activity log — not in user-facing output.
+7. **NEVER HEDGE.** Do not say "I'll try to..." or "I think the best approach is..."
+   or "Let me know if you'd like me to continue." Decide and build. Reserve
+   uncertainty for the formal blocker protocol (see below).
+
+### Prohibited output patterns (treated as rule violations)
+
+- "Here's what I just did..."
+- "Let me summarize the progress..."
+- "Should I continue with Sprint N?"
+- "I'll now proceed to..."
+- "Let me know if this looks good before I move on."
+- "I'm going to start by..."
+- Any paragraph of prose between sprints
+
+### Permitted output during execution
+
+```
+→ Sprint N: TASK-NN {summary}
+  typecheck ✓  lint ✓  test ✓  (2.1s)
+  [abc123f] feat(scope): summary [ADP-TASK-NN]
+← Sprint N ✓ — score 91/100
+
+→ Sprint N+1: TASK-NN+1 {summary}
+...
+```
+
+### Blocker report format (the ONLY time ADP stops mid-run)
+
+When ADP must halt for user input, output exactly this structure — nothing more:
+
+```
+⛔ BLOCKER
+  Type:   {sensor-fail | gated-denied | git-conflict | dep-required}
+  Task:   TASK-NN {summary}
+  Error:  {exact error message or output, ≤5 lines}
+  Tried:  {what was attempted, 1-3 bullet points}
+  Needs:  {what the user must do to unblock, one sentence}
+```
+
+Then stop. Do not speculate, apologize, or suggest alternatives — give the
+user the facts and wait.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -316,16 +363,27 @@ These are injected into your context before each phase to prevent mistakes.
 
 Execute the full pipeline for a feature. This is the core loop.
 
-**IMPORTANT — Continuous execution:** Do NOT pause between sprints to ask
-"Proceed to Sprint N?" or similar. Execute ALL tasks back-to-back without
-stopping unless: (1) a sensor fails 3 times (blocker), (2) a gated action is
-denied, or (3) a clarifying question has no obvious answer. The user has
-already approved the full run by invoking `adp run`.
+**Autonomous execution contract:** Once `adp run` is invoked, ADP owns the
+pipeline. It executes every sprint in order without stopping. It does not
+produce prose, recaps, or progress narration. The only permitted outputs are
+the sprint status lines and the final summary table. The user has pre-approved
+the full run. ADP halts only when the formal blocker protocol is triggered
+(see CRITICAL RULES → Blocker report format).
 
-### Step 0: Load State
+**The three halt conditions:**
+1. A sensor fails 3 times on the same task with the same error
+2. A gated action is denied by the user
+3. A git conflict cannot be auto-resolved
 
-Read `.adp/state.json` AND `.specs/project/STATE.md` (if present).
-If resuming, pick up where you left off.
+Nothing else stops the pipeline mid-run.
+
+### Step 0: Load State + Project Context
+
+1. Read `.adp/state.json` AND `.specs/project/STATE.md` (if present).
+   If resuming (`status: "running"` or `"paused"`), skip to the stopped task.
+2. **Auto-generate PROJECT.md** if `.specs/project/PROJECT.md` does not exist
+   (see [Project-Level Spec](#project-level-spec-auto-generation)).
+3. Load PROJECT.md into context — it informs SPECIFY and reduces clarification needs.
 
 ### Step 1: Auto-Size Complexity
 
@@ -669,7 +727,22 @@ After all tasks `done`:
 
 ### Step 7: Complete
 
-Report summary with sprint table, REQ coverage, and pointer to the feature directory.
+Output the final summary table — no prose, no narrative:
+
+```
+ADP Complete: {feature}
+══════════════════════════════════════════════════════
+ #   Task                       Score   REQs          Commit
+ 1   TASK-01 Setup              90/100  REQ-01        abc123f
+ 2   TASK-02 JWT parsing        88/100  REQ-02        def456g
+ 3   TASK-03 Token validation   91/100  REQ-02.1      789abcd
+──────────────────────────────────────────────────────
+ Avg score: 89/100   REQ coverage: 3/3 ✓   Sensors: all ✓
+
+Specs: .specs/features/{feature}/
+```
+
+That is the entire output. No "I hope this helps." No "Let me know if you have questions."
 
 ---
 
@@ -1066,13 +1139,36 @@ When starting and `state.json` exists with `status: "running"` or `"paused"`:
 3. Resume from the current sprint/task
 4. Do NOT restart from specify
 
-### Stuck Detection
+### Blocker Protocol
 
-If the same sensor fails 3 times on the same task with the same error:
-1. Stop attempting fixes
-2. Log blocker to `state.json` AND `STATE.md → Blockers`
-3. Report diagnostic info to user
-4. Wait for user guidance
+ADP halts and emits a structured blocker report in exactly **four cases**:
+
+| Type | Condition |
+|------|-----------|
+| `sensor-fail` | Same sensor fails 3× on the same task with the same error |
+| `gated-denied` | User denies a gated action |
+| `git-conflict` | Merge conflict that cannot be auto-resolved |
+| `dep-required` | A new dependency must be installed (npm/cargo/pip install) |
+
+**When triggered:**
+1. Stop ALL work on the affected task
+2. Log to `state.json → blockers[]` AND `STATE.md → Blockers`
+3. Output the structured blocker report (format in CRITICAL RULES section) — nothing else
+4. Wait for user input
+
+**Not a blocker — resolve autonomously:**
+- Sensor fails 1–2 times: fix and retry
+- Test assertion mismatch: read the actual vs expected, fix the code or the test
+- TypeScript type errors: fix the code
+- Lint errors: fix the code
+- Import path issues: resolve from codebase
+- Missing files listed in a task: create them
+- Any issue where the fix is inferable from the error output
+
+**Never do this:**
+- "I'm not sure how to fix this — could you help?"
+- "There seem to be multiple approaches, which would you prefer?"
+- Asking for help after only 1 or 2 attempts
 
 ---
 
