@@ -11,8 +11,9 @@ typecheck, test) enforced at every boundary.
 - **Runtime layer** (`src/`) — TypeScript helpers for loading guides, running
   sensors, and persisting pipeline state.
 
-> Inspired by TLC Spec-Driven. ADP adds a computational harness (live sensors,
-> scoring, stuck detection) on top of the four-phase spec-driven methodology.
+> Inspired by **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)**.
+> ADP adds a computational harness (live sensors, scoring, stuck detection) on top
+> of the four-phase spec-driven methodology.
 
 ---
 
@@ -203,7 +204,7 @@ flowchart TD
     req["<b>REQ-01.2</b> <i>spec.md</i><br/>WHEN invalid email THEN 422"]
     task["<b>TASK-05</b> <i>tasks.md</i><br/>Requirement: REQ-01.2<br/>Files: src/routes/auth.ts"]
     sprint["<b>Sprint</b> <i>execution</i><br/>contract → build → sensors → score"]
-    commit["<b>commit</b><br/>feat(auth): validate email [ADP-TASK-05]<br/>Implements: REQ-01.2"]
+    commit["<b>commit</b><br/>feat(auth): validate email format<br/>SHA recorded in state.json"]
     val["<b>validation.md</b><br/>REQ-01.2 ✓ covered by TASK-05"]
     req --> task --> sprint --> commit --> val
 ```
@@ -278,7 +279,7 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
 2. **Scope lock.** Touch only files listed in the current task. Out-of-scope
    findings → `STATE.md → Deferred Ideas`.
 3. **Fresh context per task.** Re-read what the next task needs; drop history.
-4. **Conventional Commits 1.0.0** + `[ADP-TASK-NN]` trailer.
+4. **Conventional Commits 1.0.0** — no proprietary trailers; traceability via `state.json`.
 5. **Don't skip sensors.** Never disable a check to make it pass — fix the code.
 6. **Action zones.** Free for code, gated for infra, always-ask for destructive state.
 
@@ -456,3 +457,11 @@ Single test:
 npx vitest run src/harness/engine.test.ts
 npx vitest run -t "passes on exit code 0"
 ```
+
+---
+
+## References
+
+- **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** — the four-phase spec-driven methodology (Specify → Design → Tasks → Execute) that ADP is built on. ADP extends it with a computational harness: live sensors, sprint scoring, stuck detection, and a feature-branch → PR workflow.
+- **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/)** — commit message convention used by ADP.
+- **[Anthropic — Harness Design for Long-Running Apps](https://www.anthropic.com/research/building-effective-agents)** — the evaluator-as-separate-agent principle that underpins ADP's QA layer.
