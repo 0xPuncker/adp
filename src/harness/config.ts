@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import YAML from "yaml";
-import type { HarnessConfig, EvaluatorConfig, SensorConfig, ActionConfig, ActionZone } from "../types.js";
+import type { HarnessConfig, EvaluatorConfig, SensorConfig, ActionConfig, ActionZone, AutonomyConfig, ClarifyMode, OutputMode } from "../types.js";
 
 const DEFAULT_EVALUATOR: EvaluatorConfig = {
   enabled: true,
@@ -41,6 +41,11 @@ export const SECURITY_SENSORS: Record<string, SensorConfig[]> = {
   ],
 };
 
+const DEFAULT_AUTONOMY: AutonomyConfig = {
+  clarify: "critical",
+  output: "minimal",
+};
+
 const DEFAULT_CONFIG: HarnessConfig = {
   mode: "sprint",
   min_score: 85,
@@ -51,6 +56,7 @@ const DEFAULT_CONFIG: HarnessConfig = {
   },
   evaluator: DEFAULT_EVALUATOR,
   actions: {},
+  autonomy: DEFAULT_AUTONOMY,
 };
 
 /**
@@ -114,6 +120,15 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       }
     }
 
+    // Normalize autonomy config
+    const autoCfg = parsed?.autonomy;
+    const VALID_CLARIFY = new Set<ClarifyMode>(["never", "critical", "always"]);
+    const VALID_OUTPUT = new Set<OutputMode>(["minimal", "verbose"]);
+    const autonomy: AutonomyConfig = {
+      clarify: VALID_CLARIFY.has(autoCfg?.clarify) ? autoCfg.clarify : DEFAULT_AUTONOMY.clarify,
+      output: VALID_OUTPUT.has(autoCfg?.output) ? autoCfg.output : DEFAULT_AUTONOMY.output,
+    };
+
     return {
       mode: parsed?.mode ?? "sprint",
       min_score: parsed?.min_score ?? 80,
@@ -122,6 +137,7 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       },
       evaluator,
       actions,
+      autonomy,
     };
   } catch {
     return DEFAULT_CONFIG;

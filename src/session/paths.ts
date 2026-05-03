@@ -33,12 +33,45 @@ export function resolveProjectSessionDir(cwd: string): string | null {
 }
 
 /**
- * Get the most recent (mtime) JSONL session file in the project session dir,
- * along with its corresponding session id (filename stem).
+ * Get the most relevant session in the project session dir:
+ * - Prefers session dirs that have an active `subagents/` subdirectory
+ *   (these represent sessions that have spawned sub-agents and are the
+ *   primary target for the Live Agents panel).
+ * - Falls back to the most recently modified `.jsonl` file when no
+ *   session dir with sub-agents exists yet.
  */
 export function findActiveSession(projectDir: string): { sessionId: string; jsonl: string } | null {
   try {
-    const files = readdirSync(projectDir).filter((f) => f.endsWith(".jsonl"));
+    const entries = readdirSync(projectDir);
+
+    // Priority 1: session dirs with an existing subagents/ directory.
+    // Pick the one whose subagents/ was most recently modified so we
+    // show the freshest activity when multiple sessions have run.
+    let bestSubId = "";
+    let bestSubMtime = -1;
+    for (const entry of entries) {
+      // Session dirs are UUID-style names (no extension)
+      if (entry.includes(".")) continue;
+      const subPath = resolve(projectDir, entry, "subagents");
+      try {
+        const m = statSync(subPath).mtimeMs;
+        if (m > bestSubMtime) {
+          bestSubMtime = m;
+          bestSubId = entry;
+        }
+      } catch {
+        // no subagents dir for this session
+      }
+    }
+    if (bestSubId) {
+      return {
+        sessionId: bestSubId,
+        jsonl: resolve(projectDir, `${bestSubId}.jsonl`),
+      };
+    }
+
+    // Priority 2: fall back to most recently modified .jsonl
+    const files = entries.filter((f) => f.endsWith(".jsonl"));
     if (files.length === 0) return null;
     let bestFile = "";
     let bestMtime = -1;

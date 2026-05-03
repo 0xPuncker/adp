@@ -50,6 +50,41 @@ export type {
   DesignComponent,
   DesignScreen,
   DesignDataShape,
+  AutonomyConfig,
+  ClarifyMode,
+  OutputMode,
 } from "./types.js";
 export type { SensorResult } from "./harness/engine.js";
 export type { EvaluatorPromptParams, ThresholdResult } from "./evaluator/engine.js";
+
+// ─── Git Workflow Utilities ──────────────────────────────────────
+export {
+  parseConventionalCommit,
+  validateConventionalCommit,
+  buildAdpCommitMessage,
+  formatConventionalCommit,
+} from "./git/commit.js";
+export {
+  formatBranchName,
+  getBranchType,
+  suggestBranchName,
+  validateBranchName,
+  getGitflowRules,
+} from "./git/gitflow.js";
+export {
+  parseSemver,
+  formatVersion,
+  bumpVersion,
+  getVersionBump,
+  compareVersions,
+} from "./git/semver.js";
+export type {
+  ConventionalCommit,
+  AdpCommitParams,
+  BranchType,
+  GitflowRule,
+  GitflowRules,
+  SemVer,
+  VersionBump,
+  ValidationResult,
+} from "./types.js";

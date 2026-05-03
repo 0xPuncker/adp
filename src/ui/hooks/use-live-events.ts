@@ -47,50 +47,80 @@ export function useLiveEvents(options: UseLiveEventsOptions): UseLiveEventsResul
 
   useEffect(() => {
     let disposed = false;
+    let activeWatcher: LiveWatcher | null = null;
+    let activeSessionId: string | null = null;
+
     const projectDir = resolveProjectSessionDir(cwd);
     if (!projectDir) {
       setStatus("degraded");
       setDegradedReason("project session dir not found");
       return;
     }
-    const session = findActiveSession(projectDir);
-    if (!session) {
-      setStatus("degraded");
-      setDegradedReason("no active session JSONL found");
-      return;
-    }
-    const dir = subagentsDir(projectDir, session.sessionId);
-    const watcher = new LiveWatcher({ dir, worktrees, evaluatorThresholds });
-    watcherRef.current = watcher;
 
-    watcher.on("event", (e) => {
+    function spawnWatcher(sessionId: string): void {
       if (disposed) return;
-      setEvents((prev) => {
-        const idx = prev.findIndex((p) => p.agentId === e.agentId);
-        if (idx === -1) return [...prev, e];
-        const next = prev.slice();
-        next[idx] = e;
-        return next;
-      });
-    });
-    watcher.on("status", (s) => {
-      if (disposed) return;
-      if (s.kind === "watching") {
-        setStatus("watching");
-        setDegradedReason(null);
-      } else if (s.kind === "idle") {
-        setStatus("idle");
-        setDegradedReason(null);
-      } else {
-        setStatus("degraded");
-        setDegradedReason(s.reason);
+      if (activeWatcher) {
+        void activeWatcher.close();
+        activeWatcher = null;
+        watcherRef.current = null;
       }
-    });
-    void watcher.start();
+      activeSessionId = sessionId;
+      const dir = subagentsDir(projectDir!, sessionId);
+      const w = new LiveWatcher({ dir, worktrees, evaluatorThresholds });
+      activeWatcher = w;
+      watcherRef.current = w;
+
+      w.on("event", (e) => {
+        if (disposed) return;
+        setEvents((prev) => {
+          const idx = prev.findIndex((p) => p.agentId === e.agentId);
+          if (idx === -1) return [...prev, e];
+          const next = prev.slice();
+          next[idx] = e;
+          return next;
+        });
+      });
+      w.on("status", (s) => {
+        if (disposed) return;
+        if (s.kind === "watching") {
+          setStatus("watching");
+          setDegradedReason(null);
+        } else if (s.kind === "idle") {
+          setStatus("idle");
+          setDegradedReason(null);
+        } else {
+          setStatus("degraded");
+          setDegradedReason(s.reason);
+        }
+      });
+      void w.start();
+    }
+
+    function recheckSession(): void {
+      if (disposed) return;
+      const session = findActiveSession(projectDir!);
+      if (!session) {
+        setStatus("degraded");
+        setDegradedReason("no active session JSONL found");
+        return;
+      }
+      // Restart watcher only when the active session changes (new sub-agent run)
+      if (session.sessionId !== activeSessionId) {
+        setEvents([]);
+        spawnWatcher(session.sessionId);
+      }
+    }
+
+    recheckSession();
+
+    // Re-check every 10s so the panel switches to a new session's subagents dir
+    // as soon as a fresh `adp run` spawns its first sub-agent.
+    const sessionTimer = setInterval(recheckSession, 10_000);
 
     return () => {
       disposed = true;
-      void watcher.close();
+      clearInterval(sessionTimer);
+      if (activeWatcher) void activeWatcher.close();
       watcherRef.current = null;
     };
     // worktrees / thresholds intentionally captured by ref-style: watcher reads them at parse time;
