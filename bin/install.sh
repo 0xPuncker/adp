@@ -26,14 +26,63 @@ DRY_RUN="${ADP_DRY_RUN:-0}"
 MIN_NODE_MAJOR=22
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
-log()  { printf '  %s\n' "$*"; }
-ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
-warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
-fail() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+# Color palette mirrors src/cli/branding.ts (TUI theme).
+BRAND='\033[38;5;173m'   # warm orange
+ACCENT='\033[38;5;147m'  # soft blue
+SUCCESS='\033[38;5;41m'
+ERROR='\033[38;5;167m'
+WARNING='\033[38;5;178m'
+DIM='\033[38;5;244m'
+SUBTLE='\033[38;5;240m'
+TEXT='\033[38;5;252m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# Render a rounded panel matching the Ink TUI's <Panel/>.
+# Usage: panel "<title>" "<title-color>" "<line1>" "<line2>" ...
+panel() {
+  local title="$1"; shift
+  local title_color="$1"; shift
+  local width=68
+  local inner=$((width - 4))
+  local border="$SUBTLE"
+  printf '%b╭' "$border"; printf '─%.0s' $(seq 1 $((width - 2))); printf '╮%b\n' "$RESET"
+  if [ -n "$title" ]; then
+    printf '%b│%b %b%b%-*s%b %b│%b\n' "$border" "$RESET" "$BOLD" "$title_color" "$inner" "$title" "$RESET" "$border" "$RESET"
+    printf '%b│%b %*s %b│%b\n' "$border" "$RESET" "$inner" "" "$border" "$RESET"
+  fi
+  for line in "$@"; do
+    # Strip ANSI for length calc.
+    local plain
+    plain=$(printf '%b' "$line" | sed -E 's/\x1b\[[0-9;]*m//g')
+    local pad=$((inner - ${#plain}))
+    [ $pad -lt 0 ] && pad=0
+    printf '%b│%b %b%*s %b│%b\n' "$border" "$RESET" "$line" "$pad" "" "$border" "$RESET"
+  done
+  printf '%b╰' "$border"; printf '─%.0s' $(seq 1 $((width - 2))); printf '╯%b\n' "$RESET"
+}
+
+# One-line dividers with optional label.
+divider() {
+  local label="$1"
+  if [ -z "$label" ]; then
+    printf '%b────────────────────────────────────────────────────────────────────%b\n' "$SUBTLE" "$RESET"
+  else
+    printf '%b── %b%b%b%b %s%b\n' "$SUBTLE" "$RESET" "$BOLD" "$ACCENT" "$label" "$RESET" "$RESET"
+  fi
+}
+
+log()  { printf '  %b%s%b\n' "$TEXT" "$*" "$RESET"; }
+ok()   { printf '  %b✓%b %b%s%b\n' "$SUCCESS" "$RESET" "$TEXT" "$*" "$RESET"; }
+warn() { printf '  %b!%b %b%s%b\n' "$WARNING" "$RESET" "$TEXT" "$*" "$RESET"; }
+fail() { printf '  %b✗%b %b%s%b\n' "$ERROR" "$RESET" "$TEXT" "$*" "$RESET" >&2; exit 1; }
 
 echo ""
-echo "  ADP — Autonomous Development Pipeline"
-echo "  ────────────────────────────────────────"
+panel "ADP — Autonomous Development Pipeline" "$BRAND" \
+  "$(printf '%b' "${DIM}Spec-to-code sprints with feedback control${RESET}")" \
+  "" \
+  "$(printf '%b' "${DIM}Repo:   ${RESET}${ACCENT}github.com/0xPuncker/adp${RESET}")" \
+  "$(printf '%b' "${DIM}Branch: ${RESET}${TEXT}${BRANCH}${RESET}")"
 echo ""
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -144,10 +193,8 @@ fi
 
 # ── Done ───────────────────────────────────────────────────────
 echo ""
-echo "  ────────────────────────────────────────"
-ok "ADP ready"
-echo ""
-log "Usage:"
-log "  Skill:  open Claude Code in any project → say 'adp init'"
-log "  CLI:    adp status | adp sensors | adp evaluate | adp help"
+panel "Done — ADP ready" "$SUCCESS" \
+  "$(printf '%b' "${DIM}Skill:${RESET} ${TEXT}open Claude Code in any project, say \"adp init\"${RESET}")" \
+  "$(printf '%b' "${DIM}CLI:  ${RESET} ${TEXT}adp status | adp sensors | adp evaluate | adp help${RESET}")" \
+  "$(printf '%b' "${DIM}TUI:  ${RESET} ${TEXT}adp tui${RESET} ${SUBTLE}(or 'adp dashboard')${RESET}")"
 echo ""

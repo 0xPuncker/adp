@@ -211,7 +211,28 @@ to execute every phase, run sensors, and manage state.
 
 6. **Seed `STATE.md`** as empty scaffold (see [State Management](#state-management)).
 
-7. **Immediately run `adp map`** to generate guides.
+7. **Add ADP paths to the project's `.gitignore`** so they stay local, not pushed to origin.
+
+   Read or create `.gitignore` at the project root, append (deduplicate first) a managed
+   block:
+
+   ```gitignore
+   # ADP — local pipeline state, feature specs, and skill artifacts (do not commit)
+   .adp/
+   .specs/
+   .claude/skills/adp/
+   ```
+
+   Rationale: `.adp/state.json`, sprint contracts, evaluator scratch, and generated
+   feedforward guides are local working memory — they're noisy in PRs and may contain
+   ephemeral commit references that don't survive squash/rebase. The `.specs/` tree
+   holds the user's draft spec/design/tasks per feature, also local. The
+   `.claude/skills/adp/` line covers the case where ADP is installed per-project rather
+   than globally — same reasoning applies.
+
+   If those lines already exist in `.gitignore`, do nothing.
+
+8. **Immediately run `adp map`** to generate guides.
 
 ---
 

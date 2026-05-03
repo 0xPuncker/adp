@@ -12,13 +12,17 @@ interface ActivityEntry {
 interface ActivityLogProps {
   activity: ActivityEntry[];
   limit?: number;
+  /** Inner content width (excluding panel border/padding). Defaults to 28. */
+  contentWidth?: number;
 }
 
-export function ActivityLog({ activity, limit = 12 }: ActivityLogProps): React.ReactElement {
+export function ActivityLog({ activity, limit = 12, contentWidth = 28 }: ActivityLogProps): React.ReactElement {
   const recent = activity.slice(-limit).reverse();
+  // Reserve 8 chars for "HH:MM ▸ " then clamp message to remaining width.
+  const msgWidth = Math.max(8, contentWidth - 8);
 
   return (
-    <Panel title="Activity" titleColor={theme.accent} width={34}>
+    <Panel title="Activity" titleColor={theme.accent} flexGrow={1} flexShrink={1}>
       {recent.length === 0 ? (
         <Text color={theme.dim}>No activity yet.</Text>
       ) : (
@@ -29,8 +33,8 @@ export function ActivityLog({ activity, limit = 12 }: ActivityLogProps): React.R
               hour: "2-digit",
               minute: "2-digit",
             });
-            const msg = entry.message.length > 22
-              ? entry.message.slice(0, 19) + "..."
+            const msg = entry.message.length > msgWidth
+              ? entry.message.slice(0, Math.max(0, msgWidth - 1)) + "…"
               : entry.message;
 
             return (

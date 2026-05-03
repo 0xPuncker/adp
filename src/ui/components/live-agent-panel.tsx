@@ -5,10 +5,12 @@ import { Panel } from "./panel.js";
 import type { SubagentEvent, SubagentClassification } from "../../live/types.js";
 import type { EvaluatorScores } from "../../types.js";
 
+type LiveStatus = "watching" | "idle" | "degraded";
+
 interface LiveAgentPanelProps {
   events: SubagentEvent[];
   sensorTail: string[];
-  status: "watching" | "degraded" | "idle";
+  status: LiveStatus;
   degradedReason?: string | null;
   thresholds?: EvaluatorScores;
   activeSprintId?: number | null;
@@ -16,6 +18,8 @@ interface LiveAgentPanelProps {
   maxEvents?: number;
   /** Cap rendered sensor tail lines. Defaults to 8. */
   maxSensorLines?: number;
+  /** Inner content width hint (excluding panel border/padding). Defaults to 36. */
+  contentWidth?: number;
 }
 
 const CLASSIFY_ICON: Record<SubagentClassification, string> = {
@@ -41,19 +45,26 @@ export function LiveAgentPanel({
   activeSprintId,
   maxEvents = 6,
   maxSensorLines = 8,
+  contentWidth = 36,
 }: LiveAgentPanelProps): React.ReactElement {
   const visible = events.slice(-maxEvents);
   const tail = sensorTail.slice(-maxSensorLines);
+  const tailWidth = Math.max(20, contentWidth - 2);
 
   return (
-    <Panel title="Live Agents" titleColor={theme.accent} flexGrow={1}>
+    <Panel title="Live Agents" titleColor={theme.accent} flexGrow={1} flexShrink={1}>
       <HeaderLine status={status} degradedReason={degradedReason} activeSprintId={activeSprintId ?? null} />
       {visible.length === 0 ? (
         <Text color={theme.dim}>Waiting for sub-agent activity…</Text>
       ) : (
         <Box flexDirection="column">
           {visible.map((e) => (
-            <SubagentRow key={e.agentId} event={e} thresholds={thresholds} />
+            <SubagentRow
+              key={e.agentId}
+              event={e}
+              thresholds={thresholds}
+              contentWidth={contentWidth}
+            />
           ))}
         </Box>
       )}
@@ -62,7 +73,7 @@ export function LiveAgentPanel({
           <Text color={theme.subtle}>── sensor tail ──</Text>
           {tail.map((line, i) => (
             <Text key={i} color={theme.dim}>
-              {line.length > 80 ? line.slice(0, 79) + "…" : line || " "}
+              {line.length > tailWidth ? line.slice(0, tailWidth - 1) + "…" : line || " "}
             </Text>
           ))}
         </Box>
@@ -76,7 +87,7 @@ function HeaderLine({
   degradedReason,
   activeSprintId,
 }: {
-  status: "watching" | "degraded" | "idle";
+  status: LiveStatus;
   degradedReason: string | null | undefined;
   activeSprintId: number | null;
 }): React.ReactElement {
@@ -103,9 +114,11 @@ function HeaderLine({
 function SubagentRow({
   event,
   thresholds,
+  contentWidth = 36,
 }: {
   event: SubagentEvent;
   thresholds?: EvaluatorScores;
+  contentWidth?: number;
 }): React.ReactElement {
   const elapsed = formatElapsed(event);
   const stateColor =
@@ -116,7 +129,12 @@ function SubagentRow({
       : event.verdict.pass === true
       ? theme.success
       : theme.dim;
-  const promptSnippet = event.prompt.length > 50 ? event.prompt.slice(0, 47) + "..." : event.prompt;
+  // Indent (2) + prompt clamp = contentWidth.
+  const promptBudget = Math.max(12, contentWidth - 2);
+  const promptSnippet =
+    event.prompt.length > promptBudget
+      ? event.prompt.slice(0, promptBudget - 1) + "…"
+      : event.prompt;
   const sprintSuffix = event.sprintId !== null ? ` (sp ${event.sprintId})` : "";
   return (
     <Box flexDirection="column" marginBottom={0}>
@@ -131,41 +149,60 @@ function SubagentRow({
         <Text color={theme.dim}>  {promptSnippet}</Text>
       </Box>
       {event.verdict.parsedScores && (
-        <Box flexWrap="wrap">
-          {renderScores(event.verdict.parsedScores, thresholds)}
-        </Box>
+        <ScoreLine
+          scores={event.verdict.parsedScores}
+          thresholds={thresholds}
+          contentWidth={contentWidth}
+        />
       )}
     </Box>
   );
 }
 
-function renderScores(scores: EvaluatorScores, thresholds?: EvaluatorScores): React.ReactElement[] {
-  const fields: Array<[keyof EvaluatorScores, string]> = [
-    ["correctness", "C"],
-    ["completeness", "M"],
-    ["code_quality", "Q"],
-    ["test_coverage", "T"],
-    ["security", "S"],
-    ["resilience", "R"],
-  ];
-  const out: React.ReactElement[] = [<Text key="prefix" color={theme.dim}>  </Text>];
-  for (const [field, label] of fields) {
-    const value = scores[field];
-    if (typeof value !== "number") continue;
-    const threshold = thresholds?.[field];
-    const passColor =
-      threshold === undefined
-        ? theme.text
-        : value >= threshold
-        ? theme.success
-        : theme.error;
-    out.push(
-      <Text key={field} color={passColor}>
-        {`${label}:${value} `}
-      </Text>,
-    );
-  }
-  return out;
+const SCORE_FIELDS: Array<[keyof EvaluatorScores, string]> = [
+  ["correctness", "C"],
+  ["completeness", "M"],
+  ["code_quality", "Q"],
+  ["test_coverage", "T"],
+  ["security", "S"],
+  ["resilience", "R"],
+];
+
+function ScoreLine({
+  scores,
+  thresholds,
+  contentWidth,
+}: {
+  scores: EvaluatorScores;
+  thresholds?: EvaluatorScores;
+  contentWidth: number;
+}): React.ReactElement {
+  // Each chip ~6 chars ("C:92 "), 6 chips = 36 chars + 2 indent = 38.
+  // If panel is too narrow, drop optional fields (S, R) first, then to single line.
+  const budget = Math.max(0, contentWidth - 2);
+  const present = SCORE_FIELDS.filter(([f]) => typeof scores[f] === "number");
+  const fitsAll = present.length * 6 <= budget;
+  const visible = fitsAll ? present : present.slice(0, Math.max(0, Math.floor(budget / 6)));
+  return (
+    <Box>
+      <Text color={theme.dim}>{"  "}</Text>
+      {visible.map(([field, label]) => {
+        const value = scores[field] as number;
+        const threshold = thresholds?.[field];
+        const passColor =
+          threshold === undefined
+            ? theme.text
+            : value >= threshold
+            ? theme.success
+            : theme.error;
+        return (
+          <Text key={field} color={passColor}>
+            {`${label}:${value} `}
+          </Text>
+        );
+      })}
+    </Box>
+  );
 }
 
 function formatElapsed(event: SubagentEvent): string {
