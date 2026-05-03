@@ -51,7 +51,7 @@ Harness-driven autonomous development. You ARE the orchestrator.
 ```
 → Sprint N: TASK-NN {summary}
   typecheck ✓  lint ✓  test ✓  (2.1s)
-  [abc123f] feat(scope): summary [ADP-TASK-NN]
+  [abc123f] feat(scope): summary
 ← Sprint N ✓ — score 91/100
 
 → Sprint N+1: TASK-NN+1 {summary}
@@ -514,7 +514,7 @@ Progress: 0/N complete
 - [ ] **Parallel:** [P] (no shared files with TASK-02)
 - [ ] **Done when:** integration test passes for POST /tasks 200
 - [ ] **Test:** tests/routes/tasks.test.ts — POST creates row, returns 201
-- [ ] **Commit:** `feat(tasks): add POST /tasks endpoint [ADP-TASK-01]`
+- [ ] **Commit:** `feat(tasks): add POST /tasks endpoint`
 
 ## TASK-02: {summary}
 - [ ] **Requirement:** REQ-01.2
@@ -524,7 +524,7 @@ Progress: 0/N complete
 - [ ] **Parallel:** — (edits same file as TASK-01 follow-ups)
 - [ ] **Done when:** {verification criteria}
 - [ ] **Test:** {what test to write/verify}
-- [ ] **Commit:** `feat(tasks): validate quantity [ADP-TASK-02]`
+- [ ] **Commit:** `feat(tasks): validate quantity`
 ```
 
 **Rules:**
@@ -663,15 +663,16 @@ For each task:
      - Write `evaluator_scores` to `state.json` even in self-assess mode.
    - **Hard threshold:** If score < `harness.yaml → min_score`, sprint fails.
      Return to step 7 fix loop.
-   - Commit atomically using **Conventional Commits 1.0.0** + ADP trace tag:
+   - Commit atomically using **Conventional Commits 1.0.0**:
      ```
-     feat(scope): short summary [ADP-TASK-01]
-
-     Implements: REQ-01, REQ-01.1
-     {what was implemented}
-     Sensors: typecheck ✓ lint ✓ test ✓ audit ✓
-     Evaluator: correctness 92 | completeness 88 | quality 85 | tests 80 | security 78 | resilience 72
-     Score: 84/100
+     feat(scope): short summary of what changed
+     ```
+     Optional bullet body when multiple distinct things changed:
+     ```
+     refactor(auth): extract token validation into standalone module
+     - Move verifyJwt() out of middleware into auth/token.ts
+     - Add unit tests covering expiry and malformed-token paths
+     - Update all callers to import from the new location
      ```
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
@@ -844,7 +845,7 @@ Triggered by: `adp run "quick: {description}"` or auto-classified Small.
 1. Create `.specs/quick/NNN-slug/TASK.md` with: description, files, approach, verify.
 2. Implement.
 3. Run sensors.
-4. Commit: `fix(scope): summary [ADP-QUICK-NNN]` (or `feat`, `refactor`, etc.).
+4. Commit: `fix(scope): summary` (or `feat`, `refactor`, etc.).
 5. Write `.specs/quick/NNN-slug/SUMMARY.md` — one paragraph + commit SHA.
 
 Skip Specify/Design/Tasks phases entirely.
@@ -1043,7 +1044,7 @@ ADP Pipeline Status
   ─────────────────────────────────────────────
   15:20  → Sprint 3: TASK-03 Token validation
   15:19  ⚡ typecheck ✓ lint ✓ test ✓
-  15:18  ● [ADP-TASK-02] feat(auth): add JWT parsing
+  15:18  ● feat(auth): add JWT parsing
   15:08  ← Sprint 2 complete — score: 88
   15:08  → Sprint 2: TASK-02 JWT parsing
 ```
@@ -1088,7 +1089,7 @@ of `adp run` if any completed sprints have `score: null`.
 1. Read `.adp/state.json` — find all sprints with `score: null` and `status: "done"`.
 2. Run sensors first — confirm the codebase is clean. If sensors fail, fix before scoring.
 3. For each unscored sprint:
-   a. Identify the commit (from `sprint.commit` or `git log --grep="ADP-TASK-{id}"`)
+   a. Identify the commit (from `sprint.commit` in `state.json`)
    b. Get the diff: `git show <commit> --stat` + `git show <commit>`
    c. Read the sprint contract (`.specs/features/{feature}/contracts/sprint-N.md`)
       or the task definition from `tasks.md` if no contract exists.
@@ -1150,7 +1151,7 @@ of `adp run` if any completed sprints have `score: null`.
 ```
 
 2. Set `state.json → status: "paused"`.
-3. Commit any clean in-progress work as `wip(scope): checkpoint [ADP-TASK-NN]` if safe.
+3. Commit any clean in-progress work as `wip(scope): checkpoint` if safe.
 
 ## adp resume
 
@@ -1208,7 +1209,7 @@ Every significant action gets logged to `state.json → activity[]`:
 ```json
 { "timestamp": "ISO", "type": "sprint_start", "message": "Sprint 1: TASK-01 Setup" }
 { "timestamp": "ISO", "type": "sensor_pass", "message": "typecheck ✓ lint ✓ test ✓" }
-{ "timestamp": "ISO", "type": "commit", "message": "[ADP-TASK-01] feat(auth): add middleware skeleton" }
+{ "timestamp": "ISO", "type": "commit", "message": "feat(auth): add middleware skeleton" }
 { "timestamp": "ISO", "type": "sprint_end", "message": "Sprint 1 complete — score: 95" }
 { "timestamp": "ISO", "type": "error", "message": "Sensor failed: test — 2 failures" }
 { "timestamp": "ISO", "type": "deferred", "message": "Logged to STATE.md: extract validateNIF util" }
@@ -1420,17 +1421,23 @@ stress testing — they may be incorrect, and they can go stale as models improv
 
 ### Conventional Commits 1.0.0
 
-All commits follow:
+All commits follow standard Conventional Commits 1.0.0:
 
 ```
-<type>(<scope>): <summary> [ADP-TASK-NN]
+<type>(<scope>): <summary>
 ```
 
-**Subject line only — no body.** The summary must be self-contained.
-Traceability lives in `state.json` (sprint → task → REQ) and `tasks.md`, not in the commit body.
+Optional bullet body when multiple distinct things changed:
+```
+<type>(<scope>): <summary>
+- What changed (file or module)
+- What changed (file or module)
+```
+
+**No ADP-specific trailers** (`[ADP-TASK-NN]`, `[ADP-QUICK-NNN]`, etc.). Keep messages human-readable.
+Traceability lives in `state.json` (sprint → commit SHA) and `tasks.md`, not in commit messages.
 
 Types: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
-The `[ADP-TASK-NN]` trailer preserves ADP traceability without breaking conventional-commit tooling.
 
 ### Requirement Traceability
 
@@ -1439,7 +1446,7 @@ spec.md (REQ-NN)
    ↓
 tasks.md (TASK-NN cites REQ-NN in "Requirement:" field)
    ↓
-commit subject [ADP-TASK-NN] (links task → commit via state.json)
+commit SHA recorded in state.json (sprint → commit → task → REQ)
    ↓
 validate phase (every REQ has ≥1 passing task or it's a gap)
 ```
