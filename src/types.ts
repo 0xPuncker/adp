@@ -150,3 +150,54 @@ export interface HarnessConfig {
   evaluator: EvaluatorConfig;
   actions: Record<string, ActionConfig>;
 }
+
+// ─── Git Workflow Types ──────────────────────────────────────────
+
+export interface ConventionalCommit {
+  type: string;
+  scope: string | null;
+  breaking: boolean;
+  summary: string;
+  body: string | null;
+  footer: string | null;
+}
+
+export interface AdpCommitParams {
+  type: string;
+  scope: string;
+  summary: string;
+  taskId: string;
+  requirements: string[];
+  body?: string;
+  sensorResults?: Record<string, boolean>;
+  score?: number;
+  evaluatorScores?: Record<string, number>;
+  breaking?: boolean;
+  breakingDescription?: string;
+}
+
+export type BranchType = "feature" | "release" | "hotfix" | "develop" | "main" | "bugfix" | "support";
+
+export interface GitflowRule {
+  type: BranchType;
+  prefix: string;
+  mergesInto: BranchType[];
+  deletedAfterMerge: boolean;
+}
+
+export type GitflowRules = Record<BranchType, GitflowRule>;
+
+export interface SemVer {
+  major: number;
+  minor: number;
+  patch: number;
+  pre: string | null;
+  build: string | null;
+}
+
+export type VersionBump = "major" | "minor" | "patch";
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
