@@ -1424,12 +1424,10 @@ All commits follow:
 
 ```
 <type>(<scope>): <summary> [ADP-TASK-NN]
-
-<body — what changed + why>
-Implements: REQ-NN[, REQ-NN.N]
-Sensors: typecheck ✓ lint ✓ test ✓
-Score: N/100
 ```
+
+**Subject line only — no body.** The summary must be self-contained.
+Traceability lives in `state.json` (sprint → task → REQ) and `tasks.md`, not in the commit body.
 
 Types: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 The `[ADP-TASK-NN]` trailer preserves ADP traceability without breaking conventional-commit tooling.
@@ -1441,7 +1439,7 @@ spec.md (REQ-NN)
    ↓
 tasks.md (TASK-NN cites REQ-NN in "Requirement:" field)
    ↓
-commit (body: "Implements: REQ-NN")
+commit subject [ADP-TASK-NN] (links task → commit via state.json)
    ↓
 validate phase (every REQ has ≥1 passing task or it's a gap)
 ```
