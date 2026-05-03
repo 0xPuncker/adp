@@ -24,7 +24,7 @@ describe("LiveAgentPanel", () => {
       <LiveAgentPanel events={[]} sensorTail={[]} status="watching" />,
     );
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("Waiting for sub-agent activity");
+    expect(frame).toContain("scanning for sub-agents");
   });
 
   it("renders a degraded banner with reason", () => {
