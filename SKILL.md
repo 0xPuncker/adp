@@ -199,6 +199,10 @@ to execute every phase, run sensors, and manage state.
      live_test: false               # If true, evaluator launches app and interacts
      live_test_command: npm start   # Command to start the app for live testing
 
+   autonomy:
+     clarify: critical              # "never" | "critical" (default) | "always"
+     output: minimal                # "minimal" (default) | "verbose"
+
    actions:                          # external-world commands — see Action Zones
      db_up:
        command: docker compose up -d postgres
@@ -398,15 +402,38 @@ Assess the feature scope:
 
 ### Step 2: SPECIFY
 
-**Load guides:** `conventions.md`, `architecture.md`
+**Load guides:** `conventions.md`, `architecture.md`, `PROJECT.md`
 
-**Before writing spec — clarify:**
+**Clarification gate — critical-only (default `autonomy.clarify: critical`):**
 
-Scan the feature request for ambiguity (UX behavior, error handling, edge cases,
-role boundaries). For each gray area, ASK the user a numbered clarifying question.
-Wait for answers before proceeding. Record the answers in `context.md`.
+Before writing spec, scan the feature request for ambiguity. For each gray area,
+apply this decision tree in order:
 
-If no ambiguity exists, skip clarification and don't create `context.md`.
+1. **Is the answer in the codebase?** (existing patterns, file names, function signatures)
+   → Resolve from code. Log the decision to `context.md`. Do NOT ask.
+
+2. **Is the answer in project docs?** (PROJECT.md, README, guides, ROADMAP)
+   → Resolve from docs. Log the decision to `context.md`. Do NOT ask.
+
+3. **Does a best-practice / industry-standard answer exist?**
+   → Apply it. Log the decision to `context.md`. Do NOT ask.
+
+4. **Would a wrong assumption cause the ENTIRE feature to be built incorrectly?**
+   (e.g. wrong data model, wrong auth strategy, wrong API contract)
+   → Ask exactly ONE question. Phrase it as a concrete choice:
+   "A or B: [description A] vs [description B]?"
+   Wait for the answer. Record it in `context.md`.
+
+5. **Is it a secondary detail that can be revisited?**
+   → Make a reasonable default choice. Log it to `context.md`. Do NOT ask.
+
+**Maximum one question per run.** If you find multiple critical ambiguities,
+pick the most blocking one and make autonomous decisions for the rest.
+
+If `autonomy.clarify: never`, skip step 4 — always resolve autonomously.
+If `autonomy.clarify: always`, ask a question for every gray area found.
+
+If context.md would be empty (no logged decisions), do not create it.
 
 **Action:** Create `.specs/features/{feature}/spec.md` with:
 
@@ -743,6 +770,62 @@ Specs: .specs/features/{feature}/
 ```
 
 That is the entire output. No "I hope this helps." No "Let me know if you have questions."
+
+---
+
+## Project-Level Spec Auto-Generation
+
+Triggered by: `adp run` Step 0, when `.specs/project/PROJECT.md` does not exist.
+
+**Purpose:** Give every feature run a rich project context so that the clarification
+gate can resolve more ambiguities autonomously and the spec is more informed.
+
+**Read these sources:**
+- `package.json` / `Cargo.toml` / `pyproject.toml` — name, description, version, scripts
+- `README.md` — project overview and purpose
+- `git remote -v` — repo origin (used for project URL in PROJECT.md)
+- `.adp/guides/` — if guides exist, use stack/architecture summaries
+- `CLAUDE.md` — any project-level instructions
+
+**Write `.specs/project/PROJECT.md`:**
+
+```markdown
+# {project-name}
+
+## Purpose
+{one paragraph — what the project does and who it's for, from README/package.json description}
+
+## Stack
+- Language: {from package.json/Cargo.toml}
+- Framework: {primary framework}
+- Runtime: {node version / rust edition / python version}
+- Key dependencies: {list top 5 from package.json/Cargo.toml}
+
+## Dev Commands
+- Build: {from scripts.build}
+- Test: {from scripts.test}
+- Lint: {from scripts.lint}
+- Typecheck: {from scripts.typecheck}
+
+## Architecture Summary
+{2-3 sentences describing the major modules and data flow, from guides/architecture.md or file structure}
+
+## Key Constraints
+- {list any hard constraints found: rate limits, auth requirements, DB schema, API compatibility}
+
+## Decisions Already Made
+- {list any major tech decisions visible in code or docs: ORM choice, auth strategy, etc.}
+
+## Repo
+{git remote origin URL}
+```
+
+**Rules:**
+- Only populate fields you can evidence from the files. Leave out blank sections.
+- Do NOT invent constraints or decisions.
+- Keep it under 80 lines — this is context injection, not documentation.
+- Once created, PROJECT.md is **user-owned**: never overwrite it on subsequent runs.
+  Only read it for context.
 
 ---
 
