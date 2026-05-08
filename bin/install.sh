@@ -109,7 +109,21 @@ log "Step 1: Skill files → $TARGET"
 
 if [ -d "$TARGET" ]; then
   if [ -d "$TARGET/.git" ]; then
-    fail "$TARGET is a git clone — update with: git -C \"$TARGET\" pull"
+    if [ "$DRY_RUN" = "1" ]; then
+      log "[dry-run] Would run: git -C \"$TARGET\" fetch origin && git -C \"$TARGET\" reset --hard origin/$BRANCH"
+    else
+      log "Detected git clone at $TARGET — syncing to origin/$BRANCH..."
+      git -C "$TARGET" fetch origin --quiet 2>&1 || fail "git fetch failed in $TARGET"
+      git -C "$TARGET" reset --hard "origin/$BRANCH" --quiet 2>&1 || fail "git reset failed in $TARGET"
+      ok "Skill updated via git"
+    fi
+    # Skip the download steps below — git already synced everything.
+    [ "$SKILL_ONLY" = "1" ] && { echo ""; warn "Skipping CLI install (ADP_SKILL_ONLY=1)"; } || true
+    echo ""; ok "Skill installed"; [ "$FORCE" != "1" ] && { echo ""; panel "Done — ADP ready" "$SUCCESS" \
+      "$(printf '%b' "${DIM}Skill:${RESET} ${TEXT}open Claude Code in any project, say \"adp init\"${RESET}")" \
+      "$(printf '%b' "${DIM}CLI:  ${RESET} ${TEXT}adp status | adp sensors | adp evaluate | adp help${RESET}")" \
+      "$(printf '%b' "${DIM}TUI:  ${RESET} ${TEXT}adp tui${RESET} ${SUBTLE}(or 'adp dashboard')${RESET}")"; echo ""; }
+    exit 0
   fi
   if [ "$FORCE" != "1" ]; then
     log "Found existing install at $TARGET"
