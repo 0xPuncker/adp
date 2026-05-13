@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { initProject } from "./init.js";
 
+type ClaudeSettings = {
+  hooks?: Record<string, Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>>;
+  [key: string]: unknown;
+};
+
 /** Build a fixture templates directory that mirrors the real templates/hooks + templates/agents layout. */
 async function buildFixtureTemplates(root: string): Promise<string> {
   const hooksDir = join(root, "hooks");
@@ -104,6 +109,76 @@ describe("initProject", () => {
       const result = await initProject(projectDir, emptyTemplatesDir);
       expect(result.hooksInstalled).toHaveLength(0);
       expect(result.agentsInstalled).toHaveLength(0);
+    } finally {
+      await rm(emptyTemplatesDir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates .claude/settings.json with hooks registered", async () => {
+    await initProject(projectDir, templatesDir);
+    const settingsPath = join(projectDir, ".claude", "settings.json");
+    expect(existsSync(settingsPath)).toBe(true);
+    const settings = JSON.parse(await readFile(settingsPath, "utf-8")) as ClaudeSettings;
+    expect(settings.hooks).toBeDefined();
+    expect(settings.hooks!["PreToolUse"]).toBeDefined();
+    expect(settings.hooks!["PostToolUse"]).toBeDefined();
+    expect(settings.hooks!["SessionStart"]).toBeDefined();
+  });
+
+  it("settings.json PreToolUse command points to installed hook script", async () => {
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const preHook = settings.hooks!["PreToolUse"][0];
+    expect(preHook.hooks[0].command).toContain("PreToolUse.sh");
+    expect(preHook.hooks[0].type).toBe("command");
+    expect(preHook.matcher).toBe("Bash");
+  });
+
+  it("settings.json is idempotent — re-running does not duplicate hook entries", async () => {
+    await initProject(projectDir, templatesDir);
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    expect(settings.hooks!["PreToolUse"]).toHaveLength(1);
+    expect(settings.hooks!["PostToolUse"]).toHaveLength(1);
+    expect(settings.hooks!["SessionStart"]).toHaveLength(1);
+  });
+
+  it("settings.json preserves pre-existing non-ADP hooks", async () => {
+    const claudeDir = join(projectDir, ".claude");
+    await mkdir(claudeDir, { recursive: true });
+    const existing: ClaudeSettings = {
+      hooks: {
+        PostToolUse: [{ matcher: "Edit|Write", hooks: [{ type: "command", command: "prettier --write" }] }],
+      },
+    };
+    await writeFile(join(claudeDir, "settings.json"), JSON.stringify(existing), "utf-8");
+
+    await initProject(projectDir, templatesDir);
+
+    const settings = JSON.parse(
+      await readFile(join(claudeDir, "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const postHooks = settings.hooks!["PostToolUse"];
+    // prettier entry preserved + ADP entry added
+    expect(postHooks.length).toBeGreaterThanOrEqual(2);
+    expect(postHooks.some((m) => m.hooks.some((h) => h.command === "prettier --write"))).toBe(true);
+    expect(postHooks.some((m) => m.hooks.some((h) => h.command.includes("PostToolUse.sh")))).toBe(true);
+  });
+
+  it("returns settingsUpdated: true when hooks are installed", async () => {
+    const result = await initProject(projectDir, templatesDir);
+    expect(result.settingsUpdated).toBe(true);
+  });
+
+  it("returns settingsUpdated: false when no hooks are installed", async () => {
+    const emptyTemplatesDir = await mkdtemp(join(tmpdir(), "adp-empty2-"));
+    try {
+      const result = await initProject(projectDir, emptyTemplatesDir);
+      expect(result.settingsUpdated).toBe(false);
     } finally {
       await rm(emptyTemplatesDir, { recursive: true, force: true });
     }
