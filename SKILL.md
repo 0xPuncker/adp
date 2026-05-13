@@ -1662,6 +1662,61 @@ on its own branch, so concurrent file edits don't conflict.
 - Sequential tasks (no `[P]`) always run in the main worktree
 - Failed parallel sprints halt the pipeline; the user resolves before continuing
 
+## ADK Layers
+
+ADP implements the **Agent Development Kit** (ADK) five-layer architecture. Each layer has a distinct role; together they form a deterministic guardrail stack around Claude Code.
+
+| Layer | Name | What it does | ADP artifact |
+|-------|------|--------------|--------------|
+| **L1** | CLAUDE.md (Memory Layer) | Naming rules, architecture expectations, project-level instructions | `CLAUDE.md` + `adp/CLAUDE.md` |
+| **L2** | Skills (Knowledge Layer) | Methodology surfaced to Claude Code, auto-invoked | `SKILL.md` + installer |
+| **L3** | Hooks (Guardrail Layer) | Shell scripts that run before/after tool calls and at session start — **deterministic, not AI** | `.claude/hooks/` |
+| **L4** | Subagents (Delegation Layer) | Named agent specs with explicit tool allowlists and permission scopes | `.claude/agents/` |
+| **L5** | Plugins (Distribution Layer) | Bundled install (skill + hooks + agents) for team-wide alignment | `templates/hooks/`, `templates/agents/`, `bin/install.*` |
+
+### L3 — Hooks
+
+Three hooks are installed by `adp init` into `.claude/hooks/`:
+
+**`PreToolUse.sh`** — fires before every tool call. Blocks:
+- `rm -rf` targeting anything outside `.adp/worktrees/`
+- `git reset --hard`
+- `git push --force` to `main`/`master`
+- Direct `git push origin main` (must use a feature branch)
+
+**`PostToolUse.sh`** — fires after Write/Edit tool calls. When `ADP_POST_TYPECHECK=1` is set in the environment, runs `tsc --noEmit --skipLibCheck` to catch type errors immediately after each file write. Opt-in; no-op by default.
+
+**`SessionStart.sh`** — fires at the start of every Claude Code session. Reads `.adp/state.json` and prints the current pipeline status (feature, phase, sprint count) so Claude is immediately oriented without needing to read state manually.
+
+To enable hooks: Claude Code → Settings → Hooks → add the hook scripts by path.
+
+### L4 — Formal Agent Specs
+
+Three agent definitions are installed by `adp init` into `.claude/agents/`:
+
+**`evaluator.md`** — Use when grading a sprint after sensors pass.
+- Tools: Read, Grep, Glob, Bash (read-only)
+- No Write/Edit — the evaluator never modifies code
+- Receives: sprint contract + git diff + sensor results + harness.yaml criteria
+- Returns: JSON verdict with per-criterion scores
+
+**`contract-reviewer.md`** — Use before building a sprint (contract review step).
+- Tools: Read, Grep, Glob only
+- No writes, no Bash
+- Receives: task definition + draft sprint contract
+- Returns: `APPROVED | NEEDS_REVISION` with gaps and ambiguities
+
+**`worktree-agent.md`** — Use for `[P]`-marked tasks running in parallel worktrees.
+- Tools: all (including Write, Edit, Bash)
+- Scoped to one worktree branch — cannot touch main or other sprint branches
+- Receives: one task definition + sprint contract + relevant guides
+- Returns: commit SHA + sensor results
+
+**When to use which agent:**
+- Sprint build → spawn `worktree-agent` (parallel tasks) or build in main context (sequential)
+- Pre-build review → spawn `contract-reviewer`
+- Post-build QA → spawn `evaluator`
+
 ## Harness Principles
 
 1. **Guides prevent. Sensors catch.** Both required.
