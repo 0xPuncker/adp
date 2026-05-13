@@ -8,22 +8,28 @@ export interface InitResult {
   agentsInstalled: string[];
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-// dist/lifecycle/init.js → ../../templates
-const TEMPLATES_DIR = join(here, "..", "..", "templates");
+function defaultTemplatesDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  // dist/lifecycle/init.js → ../../templates  (production)
+  // src/lifecycle/init.ts  → ../../templates  (dev/test via tsx)
+  return join(here, "..", "..", "templates");
+}
 
 /**
  * Scaffold .claude/hooks/ and .claude/agents/ in the target project
  * by copying hook and agent templates from the ADP package.
+ * @param cwd Target project root
+ * @param templatesDir Override the ADP templates dir (used in tests)
  */
-export async function initProject(cwd: string): Promise<InitResult> {
+export async function initProject(cwd: string, templatesDir?: string): Promise<InitResult> {
   const hooksInstalled: string[] = [];
   const agentsInstalled: string[] = [];
 
+  const tplDir = templatesDir ?? defaultTemplatesDir();
   const hooksDir = resolve(cwd, ".claude", "hooks");
   const agentsDir = resolve(cwd, ".claude", "agents");
-  const srcHooks = join(TEMPLATES_DIR, "hooks");
-  const srcAgents = join(TEMPLATES_DIR, "agents");
+  const srcHooks = join(tplDir, "hooks");
+  const srcAgents = join(tplDir, "agents");
 
   if (existsSync(srcHooks)) {
     await mkdir(hooksDir, { recursive: true });
