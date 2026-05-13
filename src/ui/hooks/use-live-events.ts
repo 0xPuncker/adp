@@ -49,23 +49,18 @@ export function useLiveEvents(options: UseLiveEventsOptions): UseLiveEventsResul
     let disposed = false;
     let activeWatcher: LiveWatcher | null = null;
     let activeSessionId: string | null = null;
-
-    const projectDir = resolveProjectSessionDir(cwd);
-    if (!projectDir) {
-      setStatus("degraded");
-      setDegradedReason("project session dir not found");
-      return;
-    }
+    // Mutable so recheckSession can retry after a failed initial resolve.
+    let projectDir: string | null = resolveProjectSessionDir(cwd);
 
     function spawnWatcher(sessionId: string): void {
-      if (disposed) return;
+      if (disposed || !projectDir) return;
       if (activeWatcher) {
         void activeWatcher.close();
         activeWatcher = null;
         watcherRef.current = null;
       }
       activeSessionId = sessionId;
-      const dir = subagentsDir(projectDir!, sessionId);
+      const dir = subagentsDir(projectDir, sessionId);
       const w = new LiveWatcher({ dir, worktrees, evaluatorThresholds });
       activeWatcher = w;
       watcherRef.current = w;
@@ -98,23 +93,44 @@ export function useLiveEvents(options: UseLiveEventsOptions): UseLiveEventsResul
 
     function recheckSession(): void {
       if (disposed) return;
-      const session = findActiveSession(projectDir!);
+
+      // Retry resolving the project dir — it may not have existed at startup
+      // (e.g., TUI launched before Claude Code created ~/.claude/projects/{slug}).
+      if (!projectDir) {
+        projectDir = resolveProjectSessionDir(cwd);
+        if (!projectDir) return; // still not found; remain degraded until next tick
+      }
+
+      const session = findActiveSession(projectDir);
       if (!session) {
-        setStatus("degraded");
-        setDegradedReason("no active session JSONL found");
+        // Only report no-session on the initial lookup (before any watcher has started).
+        // During a periodic recheck, a null result is transient — session rotation or
+        // a brief FS gap — so we keep the current watcher running rather than degrading.
+        if (!activeSessionId) {
+          setStatus("idle");
+          setDegradedReason(null);
+        }
         return;
       }
-      // Restart watcher only when the active session changes (new sub-agent run)
+      // Restart watcher only when the active session changes (new sub-agent run).
       if (session.sessionId !== activeSessionId) {
         setEvents([]);
         spawnWatcher(session.sessionId);
       }
     }
 
-    recheckSession();
+    // Initial check: if the project dir resolved, find the active session now.
+    // If it didn't resolve, mark degraded and let the 10s timer retry.
+    if (projectDir) {
+      recheckSession();
+    } else {
+      setStatus("degraded");
+      setDegradedReason("project session dir not found — open this project in Claude Code first");
+    }
 
     // Re-check every 10s so the panel switches to a new session's subagents dir
-    // as soon as a fresh `adp run` spawns its first sub-agent.
+    // as soon as a fresh `adp run` spawns its first sub-agent, and so the project
+    // dir resolution can recover if it wasn't ready at startup.
     const sessionTimer = setInterval(recheckSession, 10_000);
 
     return () => {
