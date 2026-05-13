@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, platform } from "node:os";
 import { existsSync } from "node:fs";
 import { initProject } from "./init.js";
+
+// Mock node:os so individual tests can override platform() without affecting others.
+// tmpdir and all other exports pass through to the real implementation.
+vi.mock("node:os", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("node:os")>();
+  return { ...mod, platform: vi.fn(() => mod.platform()) };
+});
 
 type ClaudeSettings = {
   hooks?: Record<string, Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>>;
@@ -182,5 +189,123 @@ describe("initProject", () => {
     } finally {
       await rm(emptyTemplatesDir, { recursive: true, force: true });
     }
+  });
+
+  it("settings.json PostToolUse matcher is Write|Edit|NotebookEdit", async () => {
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const postHook = settings.hooks!["PostToolUse"].find((m) =>
+      m.hooks.some((h) => h.command.includes("PostToolUse")),
+    );
+    expect(postHook?.matcher).toBe("Write|Edit|NotebookEdit");
+  });
+
+  it("settings.json SessionStart matcher is empty string (fires on every session)", async () => {
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const sessionHook = settings.hooks!["SessionStart"][0];
+    expect(sessionHook.matcher).toBe("");
+  });
+
+  it("settings.json command uses bash on non-Windows", async () => {
+    vi.mocked(platform).mockReturnValue("linux");
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const cmd = settings.hooks!["PreToolUse"][0].hooks[0].command;
+    expect(cmd).toMatch(/^bash "/);
+    expect(cmd).toContain("PreToolUse.sh");
+    vi.mocked(platform).mockRestore();
+  });
+
+  it("settings.json command uses powershell on Windows", async () => {
+    vi.mocked(platform).mockReturnValue("win32");
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const cmd = settings.hooks!["PreToolUse"][0].hooks[0].command;
+    expect(cmd).toMatch(/^powershell -ExecutionPolicy Bypass -File "/);
+    expect(cmd).toContain("PreToolUse.sh");
+    vi.mocked(platform).mockRestore();
+  });
+
+  it("settings.json non-unix path separators are forward-slashes on non-Windows", async () => {
+    vi.mocked(platform).mockReturnValue("linux");
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    const cmd = settings.hooks!["PreToolUse"][0].hooks[0].command;
+    expect(cmd).not.toContain("\\");
+    vi.mocked(platform).mockRestore();
+  });
+
+  it("accepts .ps1 files in hooks source", async () => {
+    await writeFile(join(templatesDir, "hooks", "PreToolUse.ps1"), "# ps1 hook");
+    const result = await initProject(projectDir, templatesDir);
+    expect(result.hooksInstalled).toContain("PreToolUse.ps1");
+    expect(existsSync(join(projectDir, ".claude", "hooks", "PreToolUse.ps1"))).toBe(true);
+  });
+
+  it("settings.json .ps1 hook registered with correct event", async () => {
+    // Replace the .sh fixture with a .ps1 version to test ps1 path
+    const hooksDir = join(templatesDir, "hooks");
+    await rm(join(hooksDir, "PreToolUse.sh"));
+    await writeFile(join(hooksDir, "PreToolUse.ps1"), "# ps1 hook");
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    expect(settings.hooks!["PreToolUse"]).toBeDefined();
+    const cmd = settings.hooks!["PreToolUse"][0].hooks[0].command;
+    expect(cmd).toContain("PreToolUse.ps1");
+  });
+
+  it("recovers from corrupt settings.json and writes fresh settings", async () => {
+    const claudeDir = join(projectDir, ".claude");
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(join(claudeDir, "settings.json"), "{ this is not valid json }", "utf-8");
+    // Should not throw
+    const result = await initProject(projectDir, templatesDir);
+    expect(result.settingsUpdated).toBe(true);
+    const settings = JSON.parse(
+      await readFile(join(claudeDir, "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    expect(settings.hooks!["PreToolUse"]).toBeDefined();
+  });
+
+  it("preserves non-hooks top-level keys in existing settings.json", async () => {
+    const claudeDir = join(projectDir, ".claude");
+    await mkdir(claudeDir, { recursive: true });
+    const existing = { permissions: { allow: ["Bash(find:*)"] }, theme: "dark" };
+    await writeFile(join(claudeDir, "settings.json"), JSON.stringify(existing), "utf-8");
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(claudeDir, "settings.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(settings["theme"]).toBe("dark");
+    expect((settings["permissions"] as Record<string, unknown>)["allow"]).toEqual(["Bash(find:*)"]);
+  });
+
+  it("idempotency removes stale ADP entry even when file extension changed (sh → ps1)", async () => {
+    // First init with .sh
+    await initProject(projectDir, templatesDir);
+    // Now swap to .ps1 in the template dir
+    const hooksDir = join(templatesDir, "hooks");
+    await rm(join(hooksDir, "PreToolUse.sh"));
+    await writeFile(join(hooksDir, "PreToolUse.ps1"), "# ps1");
+    await initProject(projectDir, templatesDir);
+    const settings = JSON.parse(
+      await readFile(join(projectDir, ".claude", "settings.json"), "utf-8"),
+    ) as ClaudeSettings;
+    // Should still be exactly 1 PreToolUse entry (old .sh replaced by new .ps1)
+    expect(settings.hooks!["PreToolUse"]).toHaveLength(1);
+    expect(settings.hooks!["PreToolUse"][0].hooks[0].command).toContain("PreToolUse.ps1");
   });
 });
