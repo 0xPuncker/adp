@@ -18,6 +18,7 @@ import { validateDag } from "./tasks/dag.js";
 import { WorktreeManager } from "./worktree/manager.js";
 import { runUpdate, fetchLatestSha } from "./lifecycle/update.js";
 import { runUninstall } from "./lifecycle/uninstall.js";
+import { initProject } from "./lifecycle/init.js";
 import { banner, box, divider, kv, ok, fail, info, bullet, palette, print } from "./cli/branding.js";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
@@ -57,6 +58,9 @@ async function main(): Promise<void> {
       break;
     case "worktree":
       await runWorktree(args[0], args[1]);
+      break;
+    case "init":
+      await runInit();
       break;
     case "update":
       await runUpdateCommand();
@@ -755,6 +759,31 @@ async function runWorktree(subcommand?: string, sprintArg?: string): Promise<voi
   console.log(`  Unknown worktree subcommand: ${subcommand}`);
   console.log("  Usage: adp worktree [list|clean|add <N>|remove <N>]");
   process.exitCode = 1;
+}
+
+async function runInit(): Promise<void> {
+  const { hooksInstalled, agentsInstalled } = await initProject(cwd);
+
+  console.log("\n  ADP Init\n");
+
+  if (hooksInstalled.length > 0) {
+    console.log("  \x1b[1mHooks (.claude/hooks/)\x1b[0m");
+    for (const f of hooksInstalled) {
+      console.log(`  \x1b[32m✓\x1b[0m ${f}`);
+    }
+    console.log("");
+  }
+
+  if (agentsInstalled.length > 0) {
+    console.log("  \x1b[1mAgents (.claude/agents/)\x1b[0m");
+    for (const f of agentsInstalled) {
+      console.log(`  \x1b[32m✓\x1b[0m ${f}`);
+    }
+    console.log("");
+  }
+
+  console.log("  \x1b[2mNext: enable hooks in Claude Code → Settings → Hooks\x1b[0m");
+  console.log("  \x1b[2mSay 'adp map' in a Claude Code session to generate guides.\x1b[0m\n");
 }
 
 async function runUpdateCommand(): Promise<void> {

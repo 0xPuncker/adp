@@ -16,6 +16,8 @@
     "README.md",
     "LICENSE",
     "templates",
+    "templates/hooks",
+    "templates/agents",
     "bin",
     "dist"
   ],
