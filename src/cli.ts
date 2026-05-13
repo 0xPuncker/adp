@@ -762,7 +762,7 @@ async function runWorktree(subcommand?: string, sprintArg?: string): Promise<voi
 }
 
 async function runInit(): Promise<void> {
-  const { hooksInstalled, agentsInstalled } = await initProject(cwd);
+  const { hooksInstalled, agentsInstalled, settingsUpdated } = await initProject(cwd);
 
   console.log("\n  ADP Init\n");
 
@@ -782,7 +782,11 @@ async function runInit(): Promise<void> {
     console.log("");
   }
 
-  console.log("  \x1b[2mNext: enable hooks in Claude Code → Settings → Hooks\x1b[0m");
+  if (settingsUpdated) {
+    console.log("  \x1b[32m✓\x1b[0m Hooks registered in .claude/settings.json");
+  } else {
+    console.log("  \x1b[2mNext: enable hooks in Claude Code → Settings → Hooks\x1b[0m");
+  }
   console.log("  \x1b[2mSay 'adp map' in a Claude Code session to generate guides.\x1b[0m\n");
 }
 

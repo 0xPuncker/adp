@@ -2,6 +2,7 @@ import { mkdir, copyFile, readdir, readFile, writeFile } from "node:fs/promises"
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+import { platform } from "node:os";
 
 export interface InitResult {
   hooksInstalled: string[];
@@ -31,17 +32,7 @@ function defaultTemplatesDir(): string {
   return join(here, "..", "..", "templates");
 }
 
-/**
- * Scaffold .claude/hooks/ and .claude/agents/ in the target project
- * by copying hook and agent templates from the ADP package.
- * @param cwd Target project root
- * @param templatesDir Override the ADP templates dir (used in tests)
- */
-/**
- * Merges ADP hook registrations into .claude/settings.json.
- * Existing non-ADP entries are preserved. ADP entries are identified
- * by their command containing "/.claude/hooks/" and replaced idempotently.
- */
+/** Merges ADP hook registrations into .claude/settings.json, preserving non-ADP entries. */
 async function registerHooksInSettings(
   claudeDir: string,
   hooksInstalled: string[],
@@ -62,29 +53,34 @@ async function registerHooksInSettings(
 
   const hooksDir = join(claudeDir, "hooks");
 
-  // Map hook filename → event + matcher
+  // Map hook base name (without extension) → event + matcher
   const hookConfig: Record<string, { event: string; matcher: string }> = {
-    "PreToolUse.sh": { event: "PreToolUse", matcher: "Bash" },
-    "PostToolUse.sh": { event: "PostToolUse", matcher: "Write|Edit|NotebookEdit" },
-    "SessionStart.sh": { event: "SessionStart", matcher: "" },
+    PreToolUse: { event: "PreToolUse", matcher: "Bash" },
+    PostToolUse: { event: "PostToolUse", matcher: "Write|Edit|NotebookEdit" },
+    SessionStart: { event: "SessionStart", matcher: "" },
   };
+
+  const isWindows = platform() === "win32";
 
   let changed = false;
 
   for (const file of hooksInstalled) {
-    const cfg = hookConfig[file];
+    // Strip extension to look up config
+    const base = file.replace(/\.(sh|ps1)$/, "");
+    const cfg = hookConfig[base];
     if (!cfg) continue;
 
-    const scriptPath = join(hooksDir, file).replace(/\\/g, "/");
-    const command = `bash "${scriptPath}"`;
+    const scriptPath = join(hooksDir, file);
+    const command = isWindows
+      ? `powershell -ExecutionPolicy Bypass -File "${scriptPath}"`
+      : `bash "${scriptPath.replace(/\\/g, "/")}"`;
     const { event, matcher } = cfg;
 
     if (!settings.hooks[event]) settings.hooks[event] = [];
 
-    // Remove any existing ADP entry for this event (idempotent)
-    const adpMarker = `/.claude/hooks/`;
+    // Remove any existing ADP entry for this event (idempotent — match on base name)
     settings.hooks[event] = settings.hooks[event].filter(
-      (m) => !m.hooks.some((h) => h.command.includes(adpMarker) && h.command.includes(file)),
+      (m) => !m.hooks.some((h) => h.command.includes(".claude") && h.command.includes("hooks") && h.command.includes(base)),
     );
 
     settings.hooks[event].push({ matcher, hooks: [{ type: "command", command }] });
