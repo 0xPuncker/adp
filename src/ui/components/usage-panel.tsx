@@ -128,7 +128,7 @@ export function UsagePanel({ state, cwd }: UsagePanelProps): React.ReactElement 
               : "—";
 
             return (
-              <Box key={s.id}>
+              <Box key={`${s.id}-${s.task}`}>
                 <Text color={theme.accent}>{String(s.id).padEnd(4)}</Text>
                 <Text color={theme.text}>{taskLabel.padEnd(32)}</Text>
                 <Text color={s.status === "done" ? theme.success : s.status === "failed" ? theme.error : theme.dim}>
