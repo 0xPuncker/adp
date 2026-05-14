@@ -10,7 +10,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Email: raulneivaweb@gmail.com
+Email: puncker.dev@proton.me
 
 Include:
 - A description of the vulnerability and its potential impact

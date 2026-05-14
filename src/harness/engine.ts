@@ -7,9 +7,12 @@ import { loadHarnessConfig } from "./config.js";
 const execAsync = promisify(exec);
 
 /**
- * Cross-platform tree kill. On Windows, shell:true wraps the real command in cmd.exe,
- * so a plain `child.kill()` only takes out the wrapper and the child keeps running.
- * `taskkill /T /F` kills the whole tree.
+ * Cross-platform tree kill.
+ * - Windows: `taskkill /T /F` kills the whole process tree (cmd.exe wrapper + children).
+ * - Linux/Mac: spawn with detached=true puts child in its own process group; use
+ *   process.kill(-pid, SIGKILL) to kill the group leader AND all its descendants.
+ *   Sending SIGTERM only to the shell leaves the shell's node child alive (it inherits
+ *   the pipe fds), so the `close` event never fires.
  */
 function killTree(child: ChildProcess): void {
   if (!child.pid) return;
@@ -25,9 +28,13 @@ function killTree(child: ChildProcess): void {
     }
   } else {
     try {
-      child.kill("SIGTERM");
+      process.kill(-child.pid, "SIGKILL");
     } catch {
-      // ignore
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
     }
   }
 }
@@ -154,6 +161,9 @@ export class HarnessEngine {
         shell: true,
         cwd: this.cwd,
         env: process.env,
+        // detached puts child in its own process group on POSIX so killTree
+        // can send SIGKILL to the whole group (-pid) and kill shell + children.
+        detached: process.platform !== "win32",
       });
 
       let buffer = "";
