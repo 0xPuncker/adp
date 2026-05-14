@@ -128,7 +128,7 @@ export class LiveWatcher extends EventEmitter {
    * Snapshot of all events seen so far, ordered by start time.
    */
   list(): SubagentEvent[] {
-    return [...this.events.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    return [...this.events.values()].sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""));
   }
 
   async close(): Promise<void> {

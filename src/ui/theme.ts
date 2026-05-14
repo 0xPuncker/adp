@@ -54,6 +54,7 @@ export const statusStyle: Record<string, { label: string; color: string }> = {
   blocked: { label: "BLOCKED", color: theme.error },
   awaiting_user: { label: "AWAITING", color: theme.warning },
   completed: { label: "COMPLETED", color: theme.success },
+  done: { label: "DONE", color: theme.success },
 };
 
 /** Fallback for unknown statuses */
