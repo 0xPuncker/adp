@@ -122,3 +122,139 @@ describe("LiveAgentPanel", () => {
     expect(frame).not.toContain("prompt-0");
   });
 });
+
+describe("LiveAgentPanel — design: panel labels and icons", () => {
+  it("renders 'Live Agents' panel title", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel events={[]} sensorTail={[]} status="idle" />,
+    );
+    expect(lastFrame()).toContain("Live Agents");
+  });
+
+  it("renders correct classification label for evaluator agent", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, classified: "evaluator" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).toContain("evaluator");
+  });
+
+  it("renders correct classification label for contract-review agent", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, classified: "contract-review" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).toContain("contract");
+  });
+
+  it("renders correct classification label for worktree agent", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, classified: "worktree" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).toContain("worktree");
+  });
+
+  it("renders generic 'agent' label for unknown classification", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, classified: "unknown" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).toContain("agent");
+  });
+
+  it("renders sprint correlation suffix when sprintId is set", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, sprintId: 7 }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).toContain("sp 7");
+  });
+
+  it("does not render sprint suffix when sprintId is null", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, sprintId: null }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).not.toContain("sp ");
+  });
+});
+
+describe("LiveAgentPanel — design: elapsed time display", () => {
+  it("shows elapsed time for a running agent", () => {
+    const recentStart = new Date(Date.now() - 90_000).toISOString(); // 1m30s ago
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, startedAt: recentStart, status: "running" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    const frame = lastFrame() ?? "";
+    // Should contain something like "1m30s" or "1m29s"
+    expect(frame).toMatch(/\dm\d{2}s/);
+  });
+
+  it("shows no giant elapsed for agent with empty startedAt", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, startedAt: "", status: "running" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    const frame = lastFrame() ?? "";
+    // Must not contain anything that looks like thousands of minutes
+    expect(frame).not.toMatch(/\d{4,}m/);
+  });
+});
+
+describe("LiveAgentPanel — design: watching/idle status header", () => {
+  it("shows 'live' indicator when watching and has running agents", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[{ ...baseEvent, status: "running" }]}
+        sensorTail={[]}
+        status="watching"
+      />,
+    );
+    expect(lastFrame()).toContain("live");
+  });
+
+  it("shows 'idle' indicator when status is idle", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel events={[]} sensorTail={[]} status="idle" />,
+    );
+    expect(lastFrame()).toContain("idle");
+  });
+
+  it("shows active sprint id in header when provided", () => {
+    const { lastFrame } = render(
+      <LiveAgentPanel
+        events={[]}
+        sensorTail={[]}
+        status="watching"
+        activeSprintId={5}
+      />,
+    );
+    expect(lastFrame()).toContain("sprint 5");
+  });
+});
