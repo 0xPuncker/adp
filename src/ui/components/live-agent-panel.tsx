@@ -171,7 +171,7 @@ function SubagentRow({
   contentWidth?: number;
   tick: number;
 }): React.ReactElement {
-  const elapsed = formatElapsed(event, tick);
+  const elapsed = formatElapsed(event);
   const isRunning = event.status === "running";
   const stateColor = isRunning
     ? theme.warning
@@ -291,8 +291,7 @@ function ScoreLine({
   );
 }
 
-// tick param forces re-evaluation every second for running agents (no-op for done agents)
-function formatElapsed(event: SubagentEvent, _tick?: number): string {
+function formatElapsed(event: SubagentEvent): string {
   if (!event.startedAt) return "";
   const start = new Date(event.startedAt).getTime();
   if (!Number.isFinite(start)) return "";

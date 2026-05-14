@@ -1,6 +1,6 @@
 import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import type { DesignBundle, DesignToken, DesignComponent, DesignScreen, DesignDataShape } from "../types.js";
+import type { DesignBundle, DesignToken, DesignComponent, DesignScreen } from "../types.js";
 
 /**
  * Loads and manages design bundles from .specs/features/{feature}/design-bundle/.

@@ -4,7 +4,6 @@ import * as readline from "node:readline";
 import { HarnessEngine } from "./harness/engine.js";
 import { ContextLoader } from "./context/loader.js";
 import { StateManager } from "./state/manager.js";
-import type { PipelineState, Sprint, Activity } from "./types.js";
 
 const BLUE = "\x1b[36m";
 const GREEN = "\x1b[32m";

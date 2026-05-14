@@ -125,7 +125,7 @@ async function runSensors(): Promise<void> {
 
 async function runEvaluate(): Promise<void> {
   const state = new StateManager(cwd);
-  const s = await state.load();
+  await state.load();
   const config = await loadHarnessConfig(cwd);
 
   const unscored = await state.getUnscoredSprints();

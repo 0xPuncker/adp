@@ -293,7 +293,7 @@ export class DesignExtractor {
         if (base.match(/\.(test|spec|stories|story)$/)) continue;
 
         const filePath = resolve(dirPath, entry.name);
-        const comp = await this.parseComponentFile(filePath, `${relativeDir}/${entry.name}`, base);
+        const comp = await this.parseComponentFile(filePath, `${relativeDir}/${entry.name}`);
         if (comp) components.push(comp);
       }
     } catch {
@@ -306,7 +306,6 @@ export class DesignExtractor {
   private async parseComponentFile(
     filePath: string,
     relativePath: string,
-    name: string,
   ): Promise<DesignComponent | null> {
     try {
       const content = await readFile(filePath, "utf-8");

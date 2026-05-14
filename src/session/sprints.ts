@@ -88,7 +88,7 @@ export async function readSessionSprints(cwd: string): Promise<SessionSprint[]> 
           for (const match of sprintRefs) {
             const id = parseInt(match[1], 10);
             // Clean up: remove trailing punctuation, scores, status markers
-            let task = match[2].trim()
+            const task = match[2].trim()
               .replace(/\*+/g, "")
               .replace(/\s*[✓✗●◼◻▶■]+\s*\d*\s*$/, "")
               .replace(/\s*\(commit[^)]*\)/, "")
