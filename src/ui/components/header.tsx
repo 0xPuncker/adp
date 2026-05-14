@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { theme, statusStyle, defaultStatusStyle, progressBar } from "../theme.js";
+import { theme, statusStyle, progressBar } from "../theme.js";
 
 interface HeaderProps {
   state: {
@@ -15,7 +15,7 @@ interface HeaderProps {
 }
 
 export function Header({ state, lastRefresh, cwd }: HeaderProps): React.ReactElement {
-  const { label, color } = statusStyle[state.status] || defaultStatusStyle;
+  const { label, color } = statusStyle[state.status] ?? { label: state.status.toUpperCase(), color: theme.dim };
   const done = state.sprints.filter((s) => s.status === "done").length;
   const total = state.sprints.length;
   const ratio = total > 0 ? done / total : 0;

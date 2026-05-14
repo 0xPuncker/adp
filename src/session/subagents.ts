@@ -126,7 +126,8 @@ export async function parseSubagentFile(
     }
   }
 
-  if (!startedAt) startedAt = new Date(0).toISOString();
+  // Leave startedAt as empty string if no user message was found;
+  // formatElapsed guards against empty/null and returns "" safely.
 
   const trimmedTools = recentToolCalls.slice(-RECENT_TOOL_CALLS);
   const verdict = buildVerdict(lastEndTurnText, opts.evaluatorThresholds);

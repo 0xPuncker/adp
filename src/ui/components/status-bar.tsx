@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import { theme, statusStyle, defaultStatusStyle } from "../theme.js";
+import { theme, statusStyle } from "../theme.js";
 import { readSessionCosts } from "../../session/costs.js";
 import type { SessionCost } from "../../session/costs.js";
 
@@ -37,7 +37,7 @@ function formatTokens(n: number): string {
 }
 
 export function StatusBar({ state, startedAt, cwd }: StatusBarProps): React.ReactElement {
-  const { label, color } = statusStyle[state.status] || defaultStatusStyle;
+  const { label, color } = statusStyle[state.status] ?? { label: state.status.toUpperCase(), color: theme.dim };
   const [sessionCost, setSessionCost] = useState<SessionCost | null>(null);
 
   useEffect(() => {

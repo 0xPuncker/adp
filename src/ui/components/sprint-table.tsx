@@ -133,7 +133,7 @@ export function SprintTable({
             }
 
             return (
-              <Box key={sprint.id}>
+              <Box key={`${sprint.id}-${sprint.task}`}>
                 <Box width={COL.id}>
                   <Text color={theme.dim}>{liveMark}{sprint.id}</Text>
                 </Box>
