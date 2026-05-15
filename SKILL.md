@@ -364,7 +364,29 @@ to execute every phase, run sensors, and manage state.
    If the Notion MCP is unavailable, skip silently — the local pointer file is enough
    to enable dual-write in future memory operations.
 
-9. **Immediately run `adp map`** to generate guides.
+9. **Install the `commit-msg` git hook** to enforce commit conventions deterministically.
+
+   Copy `templates/hooks/commit-msg` (from the ADP skill directory) to `.git/hooks/commit-msg`
+   in the target project, then make it executable:
+
+   ```bash
+   cp <adp-skill-dir>/templates/hooks/commit-msg .git/hooks/commit-msg
+   chmod +x .git/hooks/commit-msg
+   ```
+
+   On Windows with Git for Windows / MINGW, `chmod +x` is not needed — git reads the executable
+   bit from the file header. The hook is a POSIX sh script that runs in Git Bash automatically.
+
+   If `.git/hooks/commit-msg` already exists and is not the ADP hook (check for the
+   `# Enforces ADP commit convention` header), skip without overwriting — inform the user
+   they have a custom hook and should merge the ADP rules into it manually.
+
+   The hook enforces:
+   - No `[ADP-TASK-NN]` / `[ADP-QUICK-NNN]` trailers
+   - Subject must match `<type>(<scope>): <summary>` (Conventional Commits)
+   - No body paragraph (subject-line only)
+
+10. **Immediately run `adp map`** to generate guides.
 
 ---
 
@@ -1828,9 +1850,9 @@ ADP implements the **Agent Development Kit** (ADK) five-layer architecture. Each
 
 ### L3 — Hooks
 
-Three hooks are installed by `adp init` into `.claude/hooks/`:
+Four hooks are installed by `adp init`:
 
-**`PreToolUse.sh`** — fires before every tool call. Blocks:
+**`.claude/hooks/PreToolUse.sh`** — fires before every tool call. Blocks:
 - `rm -rf` targeting anything outside `.adp/worktrees/`
 - `git reset --hard`
 - `git checkout --` (discards uncommitted file edits)
@@ -1839,11 +1861,20 @@ Three hooks are installed by `adp init` into `.claude/hooks/`:
 - Direct `git push origin main` (must use a feature branch)
 - Write or Edit tool calls originating from the `evaluator` sub-agent
 
-**`PostToolUse.sh`** — fires after Write/Edit tool calls. When `ADP_POST_TYPECHECK=1` is set in the environment, runs `tsc --noEmit --skipLibCheck` to catch type errors immediately after each file write. Opt-in; no-op by default.
+**`.claude/hooks/PostToolUse.sh`** — fires after Write/Edit tool calls. When `ADP_POST_TYPECHECK=1` is set in the environment, runs `tsc --noEmit --skipLibCheck` to catch type errors immediately after each file write. Opt-in; no-op by default.
 
-**`SessionStart.sh`** — fires at the start of every Claude Code session. Reads `.adp/state.json` and prints the current pipeline status (feature, phase, sprint count) so Claude is immediately oriented without needing to read state manually.
+**`.claude/hooks/SessionStart.sh`** — fires at the start of every Claude Code session. Reads `.adp/state.json` and prints the current pipeline status (feature, phase, sprint count) so Claude is immediately oriented without needing to read state manually.
 
-To enable hooks: Claude Code → Settings → Hooks → add the hook scripts by path.
+**`.git/hooks/commit-msg`** — git-native hook that fires before every commit is finalized. Enforces three rules deterministically (no AI involved):
+1. **No ADP trailers** — rejects any message containing `[ADP-` (blocks `[ADP-TASK-NN]`, `[ADP-QUICK-NNN]` suffixes)
+2. **Conventional Commits format** — subject must match `<type>(<scope>): <summary>`
+3. **Subject-line only** — rejects any body paragraph after the subject (blank lines and standard git footers like `Co-authored-by:` are allowed)
+
+Exit code 1 aborts the commit with a clear diagnostic. Source: `templates/hooks/commit-msg`.
+
+To install the git hook in any project: copy `templates/hooks/commit-msg` to `.git/hooks/commit-msg` and make it executable (`chmod +x .git/hooks/commit-msg`). `adp init` does this automatically.
+
+To enable Claude Code hooks: Claude Code → Settings → Hooks → add `.claude/hooks/PreToolUse.sh`, `PostToolUse.sh`, `SessionStart.sh` by path.
 
 ### L4 — Formal Agent Specs
 

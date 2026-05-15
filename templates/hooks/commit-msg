@@ -1,0 +1,42 @@
+#!/bin/sh
+# Enforces ADP commit convention:
+#   <type>(<scope>): <summary>   — subject line only, no body, no ADP trailers
+# Conventional Commits 1.0.0 — https://www.conventionalcommits.org
+
+MSG_FILE="$1"
+MSG=$(cat "$MSG_FILE")
+
+# Strip comment lines (lines starting with #)
+STRIPPED=$(echo "$MSG" | grep -v '^#')
+
+# ── Rule 1: no [ADP-...] trailers ────────────────────────────────────────────
+if echo "$STRIPPED" | grep -qE '\[ADP-'; then
+  echo "commit-msg: [ADP-TASK-NN] / [ADP-QUICK-NNN] trailers are not allowed." >&2
+  echo "  Rule: traceability lives in state.json, not commit messages." >&2
+  echo "  Fix:  remove the [...] suffix from your commit subject." >&2
+  exit 1
+fi
+
+# ── Rule 2: Conventional Commits format on the subject line ──────────────────
+SUBJECT=$(echo "$STRIPPED" | head -1)
+CC_RE='^[a-z]+(\([^)]+\))?!?: .+'
+if ! echo "$SUBJECT" | grep -qE "$CC_RE"; then
+  echo "commit-msg: subject must follow Conventional Commits: <type>(<scope>): <summary>" >&2
+  echo "  Got: $SUBJECT" >&2
+  echo "  Example: feat(harness): add sensor timeout" >&2
+  exit 1
+fi
+
+# ── Rule 3: subject-line only — no body paragraph ────────────────────────────
+# Allow blank lines and standard git footers (Co-authored-by:, Signed-off-by:, etc.)
+# but reject any non-blank, non-footer lines after the subject.
+BODY=$(echo "$STRIPPED" | tail -n +2 | grep -v '^$' | grep -vE '^(Co-authored-by|Signed-off-by|Reviewed-by|Fixes|Closes|Refs|See-also):')
+if [ -n "$BODY" ]; then
+  echo "commit-msg: commit messages must be subject-line only — no body paragraphs." >&2
+  echo "  Rule: explanations belong in the PR description or spec file, not git history." >&2
+  echo "  Extra lines found:" >&2
+  echo "$BODY" | head -3 | sed 's/^/    /' >&2
+  exit 1
+fi
+
+exit 0
