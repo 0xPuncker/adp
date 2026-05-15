@@ -87,6 +87,7 @@ export interface EvaluatorConfig {
   criteria: EvaluatorScores;
   live_test: boolean;
   live_test_command?: string;
+  live_test_timeout?: number;
 }
 
 // ─── Design Bundle ──────────────────────────────────────────────
