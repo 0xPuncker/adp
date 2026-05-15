@@ -17,13 +17,22 @@
 set -euo pipefail
 
 REPO="0xPuncker/adp"
-BRANCH="${ADP_BRANCH:-main}"
 SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 TARGET="$SKILLS_DIR/adp"
 FORCE="${ADP_FORCE:-0}"
 SKILL_ONLY="${ADP_SKILL_ONLY:-0}"
 DRY_RUN="${ADP_DRY_RUN:-0}"
 MIN_NODE_MAJOR=22
+
+# Resolve ref: explicit branch > latest release tag > fallback main
+if [ -n "${ADP_BRANCH:-}" ]; then
+  BRANCH="$ADP_BRANCH"
+else
+  LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+    | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+  BRANCH="${LATEST_TAG:-main}"
+fi
+
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
 # Color palette mirrors src/cli/branding.ts (TUI theme).

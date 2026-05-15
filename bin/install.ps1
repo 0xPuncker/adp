@@ -16,12 +16,24 @@
 $ErrorActionPreference = "Stop"
 
 $Repo       = "0xPuncker/adp"
-$Branch     = if ($env:ADP_BRANCH) { $env:ADP_BRANCH } else { "main" }
 $SkillsDir  = if ($env:CLAUDE_SKILLS_DIR) { $env:CLAUDE_SKILLS_DIR } else { Join-Path $env:USERPROFILE ".claude\skills" }
 $Target     = Join-Path $SkillsDir "adp"
 $Force      = $env:ADP_FORCE -eq "1"
 $SkillOnly  = $env:ADP_SKILL_ONLY -eq "1"
 $DryRun     = $env:ADP_DRY_RUN -eq "1"
+
+# Resolve ref: explicit branch > latest release tag > fallback main
+if ($env:ADP_BRANCH) {
+  $Branch = $env:ADP_BRANCH
+} else {
+  try {
+    $rel = Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$Repo/releases/latest" -ErrorAction Stop
+    $Branch = $rel.tag_name
+  } catch {
+    $Branch = "main"
+  }
+}
+
 $BaseUrl    = "https://raw.githubusercontent.com/$Repo/$Branch"
 
 function Write-Log  { param($Msg) Write-Host "  $Msg" -ForegroundColor Gray }

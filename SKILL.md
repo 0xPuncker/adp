@@ -1248,6 +1248,70 @@ of `adp run` if any completed sprints have `score: null`.
 
 ---
 
+## adp update
+
+Re-runs the installer, pulling from the **latest published GitHub release** (not
+`main` branch) so the skill and CLI always land on a tagged, tested version.
+
+**Auto-detect platform and run the appropriate installer:**
+
+On **Windows** (PowerShell):
+```powershell
+$env:ADP_FORCE = "1"
+iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.ps1 | iex
+```
+
+On **macOS / Linux** (bash):
+```bash
+ADP_FORCE=1 curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
+```
+
+**With `--branch X`** — install from a specific branch instead of the latest release:
+```bash
+ADP_BRANCH=feat/my-feature ADP_FORCE=1 curl -fsSL \
+  https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
+```
+
+**How to detect platform:**
+- Check `process.platform` or `$env:OS` — `win32` or `Windows_NT` → PowerShell path
+- Otherwise → bash path
+- Use Bash tool for bash, PowerShell tool for PowerShell
+
+**After update:**
+- Verify installed version matches the latest release: `adp --version` (if CLI is installed)
+- The skill file at `~/.claude/skills/adp/SKILL.md` will contain the updated methodology
+
+---
+
+## adp uninstall
+
+Remove ADP completely: skill files, npm CLI, and standalone binary.
+
+```
+adp uninstall [-y]   # -y skips confirmation prompt
+```
+
+**Steps:**
+1. **Confirm** (unless `-y`) — ask the user once: "Remove ADP skill, CLI, and all
+   pipeline artifacts? [y/N]". If N, abort.
+2. **Remove skill directory:** `~/.claude/skills/adp/`
+   - Windows: `$env:USERPROFILE\.claude\skills\adp\`
+   - macOS/Linux: `~/.claude/skills/adp/`
+3. **Remove npm global package:** `npm uninstall -g adp`
+4. **Remove standalone binary** (if present): look for `adp` or `adp.exe` in common
+   locations (`~/.local/bin/`, `~/bin/`, `C:\Users\<user>\AppData\Local\Programs\`)
+5. **Do NOT remove** `.adp/` or `.specs/` in target projects — those are user data.
+   Inform the user they can delete those per-project if desired.
+
+**Output:**
+```
+✓ Skill removed: ~/.claude/skills/adp/
+✓ npm global package uninstalled
+✓ ADP removed. Per-project .adp/ and .specs/ dirs are left intact.
+```
+
+---
+
 ## State Management
 
 ADP maintains **two** persistent state files with distinct purposes:
