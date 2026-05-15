@@ -190,14 +190,15 @@ to execute every phase, run sensors, and manage state.
      enabled: true                   # Separate agent judges each sprint
      timing: per_sprint              # "per_sprint" | "end_of_run" | "adaptive"
      criteria:                       # Hard-fail thresholds (0-100 each)
-       correctness: 90              # Does it actually work as specified?
-       completeness: 85             # Are all acceptance criteria met?
-       code_quality: 85             # Clean, idiomatic, follows guides?
-       test_coverage: 90            # Are the important paths tested?
-       security: 85                 # No injection, XSS, secrets, safe patterns?
-       resilience: 75               # Error recovery, timeouts, retries, degradation?
+       correctness: 93              # Does it actually work as specified?
+       completeness: 89             # Are all acceptance criteria met?
+       code_quality: 90             # Clean, idiomatic, follows guides?
+       test_coverage: 93            # Are the important paths tested?
+       security: 90                 # No injection, XSS, secrets, safe patterns?
+       resilience: 85               # Error recovery, timeouts, retries, degradation?
      live_test: false               # If true, evaluator launches app and interacts
      live_test_command: npm start   # Command to start the app for live testing
+     live_test_timeout: 30          # Seconds before the app process is force-killed
 
    autonomy:
      clarify: critical              # "never" | "critical" (default) | "always"
@@ -222,6 +223,12 @@ to execute every phase, run sensors, and manage state.
        zone: always_ask
    ```
 
+   **Sensor command safety constraint:** `command:` values in `sensors:` and `actions:`
+   must not contain shell metacharacters: `|`, `&&`, `||`, `;`, `$()`, backtick substitution,
+   or redirects (`>`, `<`, `>>`). Each command must be a single, self-contained invocation
+   (e.g. `tsc --noEmit`). Reject any harness.yaml where these patterns appear and inform
+   the user — never execute a sensor command containing them.
+
    Defaults by stack (sensors — core):
    - TypeScript: `tsc --noEmit`, `npm run lint`, `npm test`
    - Rust: `cargo check`, `cargo clippy -- -D warnings`, `cargo test`
@@ -240,6 +247,7 @@ to execute every phase, run sensors, and manage state.
    - `timing: per_sprint` for Large/Complex, `end_of_run` for Medium
    - `min_score: 85` (global threshold — average of all criteria must meet this)
    - `live_test: false` unless the project has a running server (Express, FastAPI, etc.)
+   - `live_test_timeout: 30` — kill the process after 30 s regardless of outcome; never leave it running
    - `criteria` thresholds start at 75-90; tighten after first successful feature run
    - `security: 85` — catches injection, XSS, hardcoded secrets, unpinned deps
    - `resilience: 75` — checks error handling, timeouts, retries, graceful degradation
@@ -1256,9 +1264,12 @@ of `adp run` if any completed sprints have `score: null`.
 
 1. Read `.specs/HANDOFF.md` + `.adp/state.json`.
 2. Run `adp verify` to confirm nothing drifted.
-3. Re-read the in-progress task's files and guides.
-4. Continue from "Next Session" instructions.
-5. Do NOT restart from Specify.
+3. **Re-verify sensor state** — for any sprint marked `status: "done"` in `state.json`,
+   re-run the sensor suite against the current working tree before trusting its recorded
+   score. If sensors now fail, treat the sprint as incomplete and fix before continuing.
+4. Re-read the in-progress task's files and guides.
+5. Continue from "Next Session" instructions.
+6. Do NOT restart from Specify.
 
 ---
 
@@ -1314,13 +1325,19 @@ adp uninstall [-y]   # -y skips confirmation prompt
 3. **Remove npm global package:** `npm uninstall -g adp`
 4. **Remove standalone binary** (if present): look for `adp` or `adp.exe` in common
    locations (`~/.local/bin/`, `~/bin/`, `C:\Users\<user>\AppData\Local\Programs\`)
-5. **Do NOT remove** `.adp/` or `.specs/` in target projects — those are user data.
+5. **Revert global gitignore config** — if `adp init` set `core.excludesFile` and the
+   current value points to the ADP-managed file (`~/.gitignore` or the path ADP wrote),
+   unset it: `git config --global --unset core.excludesFile`.
+   Do NOT unset if the user had an existing `core.excludesFile` that predates ADP
+   (check by reading the file for the ADP-managed comment block before unsetting).
+6. **Do NOT remove** `.adp/` or `.specs/` in target projects — those are user data.
    Inform the user they can delete those per-project if desired.
 
 **Output:**
 ```
 ✓ Skill removed: ~/.claude/skills/adp/
 ✓ npm global package uninstalled
+✓ Global gitignore config reverted (or: already set by user — left intact)
 ✓ ADP removed. Per-project .adp/ and .specs/ dirs are left intact.
 ```
 
@@ -1469,7 +1486,7 @@ unprompted.
 | Zone | What it covers | Policy |
 |------|---------------|--------|
 | 🟢 **Free** | Read/Write/Edit, Grep/Glob, sensor commands from `harness.yaml`, `git add`, `git commit` (local), `git checkout -b feat/*` (feature branch creation) | Run without asking |
-| 🟡 **Gated** | `docker run` / `docker compose up`, `prisma migrate dev`, `npm install <new-dep>`, `git push origin feat/*` (feature branch push), `gh pr create` (open PR), external-API calls with cost or rate-limit impact | Ask once per session OR obeys `auto_approve: true`. `git push` + `gh pr create` are built-in end-of-run actions — no `harness.yaml` declaration needed |
+| 🟡 **Gated** | `docker run` / `docker compose up`, `prisma migrate dev`, `npm install --ignore-scripts <new-dep>`, `git push origin feat/*` (feature branch push), `gh pr create` (open PR), external-API calls with cost or rate-limit impact | Ask once per session OR obeys `auto_approve: true`. `git push` + `gh pr create` are built-in end-of-run actions — no `harness.yaml` declaration needed |
 | 🔴 **Always ask** | `git push --force`, `git reset --hard`, `git push origin main` (direct main push), `prisma migrate reset`, merging/closing PRs, deploys (`kubectl apply`, `flyctl deploy`), dropping tables, deleting branches or cloud resources | Agent proposes, user must confirm each time. `auto_approve` has no effect |
 
 **Rules**:
@@ -1816,8 +1833,11 @@ Three hooks are installed by `adp init` into `.claude/hooks/`:
 **`PreToolUse.sh`** — fires before every tool call. Blocks:
 - `rm -rf` targeting anything outside `.adp/worktrees/`
 - `git reset --hard`
+- `git checkout --` (discards uncommitted file edits)
+- `git clean -fd` (deletes untracked files)
 - `git push --force` to `main`/`master`
 - Direct `git push origin main` (must use a feature branch)
+- Write or Edit tool calls originating from the `evaluator` sub-agent
 
 **`PostToolUse.sh`** — fires after Write/Edit tool calls. When `ADP_POST_TYPECHECK=1` is set in the environment, runs `tsc --noEmit --skipLibCheck` to catch type errors immediately after each file write. Opt-in; no-op by default.
 
@@ -1830,8 +1850,8 @@ To enable hooks: Claude Code → Settings → Hooks → add the hook scripts by 
 Three agent definitions are installed by `adp init` into `.claude/agents/`:
 
 **`evaluator.md`** — Use when grading a sprint after sensors pass.
-- Tools: Read, Grep, Glob, Bash (read-only)
-- No Write/Edit — the evaluator never modifies code
+- `allowedTools: [Read, Grep, Glob, Bash]` — Bash restricted to read-only commands (`git diff`, `git log`, `cat`)
+- No Write/Edit — the evaluator never modifies code; the PreToolUse hook must block any Write or Edit call from this agent
 - Receives: sprint contract + git diff + sensor results + harness.yaml criteria
 - Returns: JSON verdict with per-criterion scores
 
@@ -1882,19 +1902,27 @@ The project slug is derived from the directory name `C--Users-User-Documents-Cla
 If `reference_notion_memory.md` does not exist, skip Notion sync silently — do not
 error, do not create the pointer file automatically.
 
-**Step 2 — Map frontmatter to Notion schema:**
+**Step 2 — Sanitize before syncing (privacy / internal-path protection):**
+
+Before mapping fields to Notion, strip the following from `Body`, `Why`, and `How to apply`:
+- Absolute file paths (e.g. `C:\Users\...`, `/home/...`, `/c/Users/...`)
+- `file:line` references (e.g. `src/foo.ts:42`)
+- Any content sourced from `security.md` — that guide contains vulnerability details and dependency audit output that must never leave the local environment
+- Replace stripped references with a generic description (e.g. "see codebase" instead of a path)
+
+**Step 3 — Map frontmatter to Notion schema:**
 
 | Local frontmatter field | Notion DB property | Notes |
 |------------------------|-------------------|-------|
 | `name` slug            | `Name` (TITLE)    | Use the slug as-is |
 | `metadata.type`        | `Type` (SELECT)   | user / feedback / project / reference |
 | _(current project)_    | `Project` (SELECT)| From pointer file |
-| Body paragraph(s)      | `Body` (text)     | Everything after frontmatter, before **Why:** |
-| `**Why:** ...` line    | `Why` (text)      | Strip the `**Why:** ` prefix |
-| `**How to apply:** ...` line | `How to apply` (text) | Strip the `**How to apply:** ` prefix |
+| Body paragraph(s)      | `Body` (text)     | Everything after frontmatter, before **Why:** (sanitized) |
+| `**Why:** ...` line    | `Why` (text)      | Strip the `**Why:** ` prefix (sanitized) |
+| `**How to apply:** ...` line | `How to apply` (text) | Strip the `**How to apply:** ` prefix (sanitized) |
 | _(always)_             | `Status`          | Set to `"active"` on create; update explicitly when stale |
 
-**Step 3 — Create or update:**
+**Step 4 — Create or update:**
 
 For a **new** memory:
 ```
