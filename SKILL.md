@@ -264,10 +264,17 @@ to execute every phase, run sensors, and manage state.
 
 6. **Seed `STATE.md`** as empty scaffold (see [State Management](#state-management)).
 
-7. **Add ADP paths to the project's `.gitignore`** so they stay local, not pushed to origin.
+7. **Add ADP paths to the global `.gitignore`** so they stay local across all projects
+   without polluting any project's tracked `.gitignore`.
 
-   Read or create `.gitignore` at the project root, append (deduplicate first) a managed
-   block:
+   **Locate the global gitignore file:**
+   ```bash
+   git config --global core.excludesFile
+   ```
+   If that returns a path, use it. Otherwise default to `~/.gitignore`
+   (Windows: `C:\Users\<user>\.gitignore`).
+
+   If the file does not exist, create it. Append (deduplicate first) a managed block:
 
    ```gitignore
    # ADP — local pipeline state, feature specs, and skill artifacts (do not commit)
@@ -276,14 +283,21 @@ to execute every phase, run sensors, and manage state.
    .claude/skills/adp/
    ```
 
+   If the global gitignore file has no `core.excludesFile` entry yet, register it:
+   ```bash
+   git config --global core.excludesFile ~/.gitignore
+   ```
+   (Use the actual resolved path, not `~`, so git picks it up on all platforms.)
+
    Rationale: `.adp/state.json`, sprint contracts, evaluator scratch, and generated
    feedforward guides are local working memory — they're noisy in PRs and may contain
    ephemeral commit references that don't survive squash/rebase. The `.specs/` tree
-   holds the user's draft spec/design/tasks per feature, also local. The
-   `.claude/skills/adp/` line covers the case where ADP is installed per-project rather
-   than globally — same reasoning applies.
+   holds the user's draft spec/design/tasks per feature, also local. Using the global
+   gitignore keeps per-project `.gitignore` files clean and avoids committing ADP's
+   internal paths to shared repos. The `.claude/skills/adp/` line covers the case
+   where ADP is installed per-project rather than globally — same reasoning applies.
 
-   If those lines already exist in `.gitignore`, do nothing.
+   If those lines already exist in the global gitignore, do nothing.
 
 8. **Bootstrap Notion memory pointer** so the dual-write protocol activates automatically
    for this project (see [Notion Memory Sync](#notion-memory-sync-dual-write-protocol)).
