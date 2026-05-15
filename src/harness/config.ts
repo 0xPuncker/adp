@@ -15,7 +15,19 @@ const DEFAULT_EVALUATOR: EvaluatorConfig = {
     resilience: 75,
   },
   live_test: false,
+  live_test_timeout: 30,
 };
+
+const SHELL_METACHAR_RE = /[|;&$`]|&&|\|\||>>?|<(?!<)|`/;
+
+/**
+ * Returns false if the command contains shell metacharacters that could be
+ * exploited via a crafted harness.yaml (command injection).
+ * Rejects: |, &&, ||, ;, $(), backticks, >, >>, <
+ */
+export function validateSensorCommand(command: string): boolean {
+  return !SHELL_METACHAR_RE.test(command);
+}
 
 /**
  * Security sensor templates per stack. Used by SKILL.md during `adp init`
@@ -72,7 +84,13 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
     // Normalize sensors — handle both flat object and array formats
     let sensors: SensorConfig[] = [];
     if (parsed?.sensors?.execute?.computational) {
-      sensors = parsed.sensors.execute.computational;
+      sensors = (parsed.sensors.execute.computational as SensorConfig[]).filter((s) => {
+        if (!validateSensorCommand(s.command)) {
+          console.warn(`[adp] sensor "${s.name}" rejected: command contains shell metacharacters`);
+          return false;
+        }
+        return true;
+      });
     } else if (parsed?.sensors && parsed?.order) {
       // Flat format: sensors: { typecheck: { command: ... } } + order: [...]
       const order: string[] = parsed.order;
@@ -84,7 +102,14 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
           timeout: entry?.timeout,
           fix_hint: entry?.fix_hint ?? entry?.description,
         };
-      }).filter((s: SensorConfig) => s.command);
+      }).filter((s: SensorConfig) => {
+        if (!s.command) return false;
+        if (!validateSensorCommand(s.command)) {
+          console.warn(`[adp] sensor "${s.name}" rejected: command contains shell metacharacters`);
+          return false;
+        }
+        return true;
+      });
     }
 
     // Normalize evaluator config
@@ -102,6 +127,9 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       },
       live_test: evalCfg?.live_test ?? DEFAULT_EVALUATOR.live_test,
       live_test_command: evalCfg?.live_test_command,
+      live_test_timeout: typeof evalCfg?.live_test_timeout === "number"
+        ? evalCfg.live_test_timeout
+        : DEFAULT_EVALUATOR.live_test_timeout,
     };
 
     // Normalize actions
@@ -110,8 +138,13 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       for (const [name, cfg] of Object.entries(parsed.actions)) {
         const entry = cfg as Record<string, unknown>;
         if (entry?.command) {
+          const cmd = String(entry.command);
+          if (!validateSensorCommand(cmd)) {
+            console.warn(`[adp] action "${name}" rejected: command contains shell metacharacters`);
+            continue;
+          }
           actions[name] = {
-            command: String(entry.command),
+            command: cmd,
             zone: (entry.zone as ActionZone) ?? "gated",
             auto_approve: Boolean(entry.auto_approve ?? false),
             depends_on: Array.isArray(entry.depends_on) ? entry.depends_on : undefined,

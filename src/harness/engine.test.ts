@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { HarnessEngine, stripAnsi } from "./engine.js";
+import { validateSensorCommand, loadHarnessConfig } from "./config.js";
+import { writeFile, mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { SensorChunk } from "../live/types.js";
 
 describe("HarnessEngine", () => {
@@ -35,6 +39,86 @@ describe("HarnessEngine", () => {
       timeout: 5000,
     });
     expect(result.output).toContain("hello-world");
+  });
+});
+
+describe("validateSensorCommand", () => {
+  it("accepts clean commands", () => {
+    expect(validateSensorCommand("tsc --noEmit")).toBe(true);
+    expect(validateSensorCommand("npm run lint")).toBe(true);
+    expect(validateSensorCommand("cargo test")).toBe(true);
+    expect(validateSensorCommand("npx secretlint '**/*'")).toBe(true);
+  });
+
+  it("rejects pipe metacharacter", () => {
+    expect(validateSensorCommand("tsc | grep error")).toBe(false);
+  });
+
+  it("rejects && chaining", () => {
+    expect(validateSensorCommand("npm test && rm -rf dist")).toBe(false);
+  });
+
+  it("rejects || chaining", () => {
+    expect(validateSensorCommand("npm test || exit 0")).toBe(false);
+  });
+
+  it("rejects semicolon", () => {
+    expect(validateSensorCommand("npm test; echo done")).toBe(false);
+  });
+
+  it("rejects $() substitution", () => {
+    expect(validateSensorCommand("echo $(whoami)")).toBe(false);
+  });
+
+  it("rejects backtick substitution", () => {
+    expect(validateSensorCommand("echo `whoami`")).toBe(false);
+  });
+
+  it("rejects output redirect >", () => {
+    expect(validateSensorCommand("npm test > /tmp/out")).toBe(false);
+  });
+
+  it("rejects input redirect <", () => {
+    expect(validateSensorCommand("wc -l < file.txt")).toBe(false);
+  });
+});
+
+describe("loadHarnessConfig — live_test_timeout", () => {
+  it("defaults live_test_timeout to 30 when absent", async () => {
+    const dir = join(tmpdir(), `adp-test-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "mode: sprint\n");
+    const cfg = await loadHarnessConfig(dir);
+    expect(cfg.evaluator.live_test_timeout).toBe(30);
+    await rm(dir, { recursive: true });
+  });
+
+  it("parses live_test_timeout from yaml", async () => {
+    const dir = join(tmpdir(), `adp-test-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "evaluator:\n  live_test_timeout: 60\n");
+    const cfg = await loadHarnessConfig(dir);
+    expect(cfg.evaluator.live_test_timeout).toBe(60);
+    await rm(dir, { recursive: true });
+  });
+});
+
+describe("loadHarnessConfig — sensor command validation", () => {
+  it("omits sensors with shell metacharacters", async () => {
+    const dir = join(tmpdir(), `adp-test-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    const yaml = [
+      "sensors:",
+      "  good: { command: 'tsc --noEmit' }",
+      "  bad:  { command: 'tsc | grep error' }",
+      "order: [good, bad]",
+    ].join("\n");
+    await writeFile(join(dir, ".adp", "harness.yaml"), yaml);
+    const cfg = await loadHarnessConfig(dir);
+    const names = cfg.sensors.execute.computational.map((s) => s.name);
+    expect(names).toContain("good");
+    expect(names).not.toContain("bad");
+    await rm(dir, { recursive: true });
   });
 });
 
