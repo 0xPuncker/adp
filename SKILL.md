@@ -285,7 +285,64 @@ to execute every phase, run sensors, and manage state.
 
    If those lines already exist in `.gitignore`, do nothing.
 
-8. **Immediately run `adp map`** to generate guides.
+8. **Bootstrap Notion memory pointer** so the dual-write protocol activates automatically
+   for this project (see [Notion Memory Sync](#notion-memory-sync-dual-write-protocol)).
+
+   **Derive the project slug:**
+   - The current working directory maps to a Claude project slug.
+   - On Windows the slug is derived from the absolute path by replacing `\` with `-` and
+     dropping the leading separator: `C:\Users\User\Documents\Claude\my-proj` →
+     `C--Users-User-Documents-Claude-my-proj`.
+   - The memory directory is: `~/.claude/projects/<slug>/memory/`
+     (on Windows: `C:\Users\User\.claude\projects\<slug>\memory\`)
+
+   **Create the pointer file** at `<memory-dir>/reference_notion_memory.md` — but only
+   if it does not already exist:
+
+   ```markdown
+   ---
+   name: notion-memory-db
+   description: "Notion \"ADP Memory\" database is the online memory store for cross-session facts"
+   metadata:
+     node_type: memory
+     type: reference
+   ---
+
+   Notion page "Claude Code Memory": https://www.notion.so/361980a04837810f987ce2a865d61eec
+
+   Database "ADP Memory" (data source ID: `2d1ac8c4-819a-4562-a57b-944dc613b18f`):
+   https://www.notion.so/6638ba8a3a224e6fb3c9a3dd5c63c61f
+
+   Schema: Name (Title), Type (user/feedback/project/reference), Project (text), Body (text), Why (text), How to apply (text), Created (auto), Last verified (date), Status (active/stale/superseded).
+
+   **How to apply:** When adding a new memory, create a page in this database via
+   `mcp__claude_ai_Notion__notion-create-pages` with
+   `data_source_id: 2d1ac8c4-819a-4562-a57b-944dc613b18f` and `Project: "<slug>"`.
+   When recalling, query via `notion-query-database-view`.
+   Keep local `.md` files and Notion in sync — both should reflect the same set of memories.
+   ```
+
+   **Create or update `MEMORY.md`** in `<memory-dir>/` — ensure it contains the index
+   entry for the pointer file. If `MEMORY.md` already exists and the entry is present,
+   skip. Otherwise append:
+
+   ```markdown
+   - [notion-memory-db](reference_notion_memory.md) — Notion "ADP Memory" database for cross-session memory (project: <slug>)
+   ```
+
+   After writing the pointer file, also add a row to the Notion "ADP Memory" DB to
+   record that this project is now tracked. Use `mcp__claude_ai_Notion__notion-create-pages`
+   with `data_source_id: 2d1ac8c4-819a-4562-a57b-944dc613b18f` and these fields:
+   - `Name`: `notion-memory-db`
+   - `Type`: `reference`
+   - `Project`: `<slug>`
+   - `Body`: `ADP Memory Notion DB pointer bootstrapped by adp init`
+   - `Status`: `active`
+
+   If the Notion MCP is unavailable, skip silently — the local pointer file is enough
+   to enable dual-write in future memory operations.
+
+9. **Immediately run `adp map`** to generate guides.
 
 ---
 
@@ -1716,6 +1773,81 @@ Three agent definitions are installed by `adp init` into `.claude/agents/`:
 - Sprint build → spawn `worktree-agent` (parallel tasks) or build in main context (sequential)
 - Pre-build review → spawn `contract-reviewer`
 - Post-build QA → spawn `evaluator`
+
+## Notion Memory Sync (dual-write protocol)
+
+Every time you write a local memory `.md` file (via Write or Edit), also sync it to
+the "ADP Memory" Notion database — **in the same operation, not later**.
+
+### When to sync
+
+- **Write:** New memory file created → create a new Notion page.
+- **Edit/Update:** Existing memory file changed → search Notion for the page by
+  `Name` + `Project`, then update it via `notion-update-page`.
+- **Delete/Supersede:** Memory marked stale or deleted → update the Notion page's
+  `Status` field to `stale` or `superseded`.
+- **Skip sync for:** `MEMORY.md` (index file), `reference_notion_memory.md` (pointer file).
+  Only sync files that contain actual memories (have `metadata.type` frontmatter).
+
+### How to sync
+
+**Step 1 — Read the pointer file** from the current project's memory directory:
+```
+~/.claude/projects/<project-slug>/memory/reference_notion_memory.md
+```
+Extract:
+- `data_source_id` (e.g. `2d1ac8c4-819a-4562-a57b-944dc613b18f`)
+- The `Project` value to tag the entry with (e.g. `"adp"`, `"rooted-life"`)
+
+The project slug is derived from the directory name `C--Users-User-Documents-Claude-<slug>`.
+
+If `reference_notion_memory.md` does not exist, skip Notion sync silently — do not
+error, do not create the pointer file automatically.
+
+**Step 2 — Map frontmatter to Notion schema:**
+
+| Local frontmatter field | Notion DB property | Notes |
+|------------------------|-------------------|-------|
+| `name` slug            | `Name` (TITLE)    | Use the slug as-is |
+| `metadata.type`        | `Type` (SELECT)   | user / feedback / project / reference |
+| _(current project)_    | `Project` (SELECT)| From pointer file |
+| Body paragraph(s)      | `Body` (text)     | Everything after frontmatter, before **Why:** |
+| `**Why:** ...` line    | `Why` (text)      | Strip the `**Why:** ` prefix |
+| `**How to apply:** ...` line | `How to apply` (text) | Strip the `**How to apply:** ` prefix |
+| _(always)_             | `Status`          | Set to `"active"` on create; update explicitly when stale |
+
+**Step 3 — Create or update:**
+
+For a **new** memory:
+```
+mcp__claude_ai_Notion__notion-create-pages
+  parent.data_source_id: <data_source_id>
+  pages[0].properties:
+    Name:           <slug>
+    Type:           <type>
+    Project:        <project>
+    Body:           <body text>
+    Why:            <why text>
+    How to apply:   <how to apply text>
+    Status:         active
+```
+
+For an **updated** memory, first search for the existing page:
+```
+mcp__claude_ai_Notion__notion-search
+  query: <slug>
+  data_source_url: collection://<data_source_id>
+  query_type: internal
+```
+Then call `notion-update-page` on the matching result's `id`.
+
+### Failure handling
+
+If the Notion MCP call fails (network error, auth, schema mismatch), log a one-line
+warning to the user and continue — the local `.md` file is the source of truth.
+Never block a memory write because Notion sync failed.
+
+---
 
 ## Harness Principles
 
