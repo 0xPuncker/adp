@@ -33,6 +33,14 @@ describe("StateManager", () => {
     expect(state.startedAt).not.toBeNull();
   });
 
+  it("records the active feature branch", async () => {
+    await manager.startPipeline("auth", "medium");
+    await manager.setBranch("feat/auth");
+
+    const state = await manager.load();
+    expect(state.branch).toBe("feat/auth");
+  });
+
   it("starts and completes a sprint", async () => {
     await manager.startPipeline("auth", "medium");
     const sprint = await manager.startSprint("TASK-01 Setup", "Create middleware skeleton");
