@@ -24,6 +24,7 @@ const EMPTY_STATE: PipelineState = {
   status: "idle",
   phase: null,
   feature: null,
+  branch: null,
   complexity: null,
   sprints: [],
   activity: [],
@@ -56,6 +57,7 @@ export class StateManager {
         status: parsed.status ?? "idle",
         phase: parsed.phase ?? null,
         feature: parsed.feature ?? null,
+        branch: parsed.branch ?? null,
         complexity: parsed.complexity ?? null,
         sprints: Array.isArray(parsed.sprints) ? parsed.sprints.map(normalizeSprint) : [],
         activity: Array.isArray(parsed.activity) ? parsed.activity : [],
@@ -90,6 +92,7 @@ export class StateManager {
     const state = await this.load();
     state.status = "running";
     state.feature = feature;
+    state.branch = null;
     state.complexity = complexity;
     state.phase = "specify";
     state.startedAt = new Date().toISOString();
@@ -101,6 +104,13 @@ export class StateManager {
     const state = await this.load();
     state.phase = phase;
     if (phase) await this.logActivity("info", `Phase: ${phase}`);
+    await this.save();
+  }
+
+  async setBranch(branch: string): Promise<void> {
+    const state = await this.load();
+    state.branch = branch;
+    await this.logActivity("info", `Branch: ${branch}`);
     await this.save();
   }
 

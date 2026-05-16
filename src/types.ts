@@ -53,6 +53,7 @@ export interface PipelineState {
   status: string;
   phase: string | null;
   feature: string | null;
+  branch: string | null;
   complexity: string | null;
   sprints: Sprint[];
   activity: Activity[];

@@ -334,6 +334,7 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
 |---------|---------|
 | `adp init` | Detect stack, create `.adp/` + `.specs/`, write `harness.yaml`, run `adp map` |
 | `adp map` | Analyze codebase, generate the 7 feedforward guides |
+| `adp feature <request>` | Create `feat/<slug>`, seed `.specs/features/<slug>/spec.md`, and start Specify |
 | `adp run <feature>` | Execute full pipeline for a feature |
 | `adp status` | Show current sprint, phase, recent activity |
 | `adp verify` | Run all sensors; report pass/fail |

@@ -19,9 +19,11 @@ import { WorktreeManager } from "./worktree/manager.js";
 import { runUpdate, fetchLatestSha } from "./lifecycle/update.js";
 import { runUninstall } from "./lifecycle/uninstall.js";
 import { initProject } from "./lifecycle/init.js";
+import { startFeature } from "./features/manager.js";
 import { banner, box, divider, kv, ok, fail, info, bullet, palette, print } from "./cli/branding.js";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
+import type { Complexity } from "./types.js";
 
 const [, , command, ...rawArgs] = process.argv;
 const cwdIdx = rawArgs.indexOf("--cwd");
@@ -61,6 +63,9 @@ async function main(): Promise<void> {
       break;
     case "init":
       await runInit();
+      break;
+    case "feature":
+      await runFeature(args);
       break;
     case "update":
       await runUpdateCommand();
@@ -222,6 +227,7 @@ async function showStatus(): Promise<void> {
   console.log("  ══════════════════════════════════════════\n");
   console.log(`  Status:     ${statusLabel(s.status)}`);
   console.log(`  Feature:    ${s.feature ?? "—"}`);
+  console.log(`  Branch:     ${s.branch ?? "—"}`);
   console.log(`  Phase:      ${s.phase ?? "—"}`);
   console.log(`  Complexity: ${s.complexity ?? "—"}`);
   console.log(`  Sprints:    ${sprintsDone}/${mergedSprints.length}${sprintsFailed > 0 ? ` \x1b[31m(${sprintsFailed} failed)\x1b[0m` : ""}${sprintsActive > 0 ? ` \x1b[33m(${sprintsActive} active)\x1b[0m` : ""}${sprintsPlanned > 0 ? ` \x1b[2m(${sprintsPlanned} planned)\x1b[0m` : ""}`);
@@ -356,6 +362,36 @@ async function startPipeline(feature?: string, complexity?: string): Promise<voi
   const comp = (complexity ?? "medium") as "small" | "medium" | "large" | "complex";
   await state.startPipeline(feature, comp);
   console.log(`\n  \x1b[32m▶\x1b[0m Pipeline started: ${feature} [${comp}]\n`);
+}
+
+async function runFeature(rawArgs: string[]): Promise<void> {
+  const parsed = parseFeatureArgs(rawArgs);
+  if (!parsed.ok) {
+    console.log("  Usage: adp feature <feature request> [--complexity small|medium|large|complex]");
+    if (parsed.error) console.log(`  ${parsed.error}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const result = await startFeature(cwd, parsed.feature, parsed.complexity);
+    const branchAction = {
+      created: "Created branch",
+      checked_out: "Checked out branch",
+      already_on: "Already on branch",
+    }[result.branchAction];
+    const specAction = result.specCreated ? "Created spec" : "Using existing spec";
+
+    console.log("\n  ADP Feature\n");
+    console.log(`  \x1b[32m✓\x1b[0m ${branchAction}: ${result.branch}`);
+    console.log(`  \x1b[32m✓\x1b[0m Pipeline: ${result.slug} [${result.complexity}]`);
+    console.log(`  \x1b[32m✓\x1b[0m ${specAction}: ${result.specPath}`);
+    console.log("  \x1b[2mProceed with Specify → Design → Tasks → Execute from the seeded spec.\x1b[0m\n");
+  } catch (err) {
+    console.log("\n  \x1b[31m✗\x1b[0m ADP feature failed");
+    console.log(`  ${(err as Error).message}\n`);
+    process.exitCode = 1;
+  }
 }
 
 async function startSprint(task?: string, contract?: string): Promise<void> {
@@ -990,6 +1026,7 @@ function printUsage(): void {
   const pipeline: CmdRow[] = [
     { cmd: "init", desc: "Detect stack, scaffold .adp/ + .specs/, generate harness.yaml" },
     { cmd: "map", desc: "Analyze codebase → 8 feedforward guides in .adp/guides/" },
+    { cmd: "feature", args: "<request>", desc: "Create feat/<slug>, seed spec, and start Specify" },
     { cmd: "run", args: "<feature>", desc: "Execute Specify→Design→Tasks→Execute pipeline" },
     { cmd: "validate", args: "[feature]", desc: "Run sensors + DAG validation on tasks.md" },
     { cmd: "verify", desc: "Run all sensors (typecheck, lint, test, audit, …)" },
@@ -1060,6 +1097,36 @@ function statusLabel(status: string): string {
     case "awaiting_user": return "\x1b[33m◎ AWAITING\x1b[0m";
     default: return "\x1b[2m○ IDLE\x1b[0m";
   }
+}
+
+type FeatureArgs =
+  | { ok: true; feature: string; complexity: Complexity }
+  | { ok: false; error?: string };
+
+const COMPLEXITIES = new Set<Complexity>(["small", "medium", "large", "complex"]);
+
+function parseFeatureArgs(rawArgs: string[]): FeatureArgs {
+  let complexity: Complexity = "medium";
+  const featureParts: string[] = [];
+
+  for (let i = 0; i < rawArgs.length; i++) {
+    const arg = rawArgs[i];
+    if (arg === "--complexity" || arg === "-c") {
+      const value = rawArgs[i + 1];
+      if (!value) return { ok: false, error: "Missing complexity value." };
+      if (!COMPLEXITIES.has(value as Complexity)) {
+        return { ok: false, error: `Invalid complexity "${value}".` };
+      }
+      complexity = value as Complexity;
+      i++;
+      continue;
+    }
+    featureParts.push(arg);
+  }
+
+  const feature = featureParts.join(" ").trim();
+  if (!feature) return { ok: false };
+  return { ok: true, feature, complexity };
 }
 
 function activityIcon(type: string): string {

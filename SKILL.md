@@ -5,8 +5,8 @@ description: >
   Wraps coding work with feedforward guides (auto-generated from codebase analysis)
   and feedback sensors (lint, typecheck, test) enforced at every boundary.
   Phases: Specify → Design → Tasks → Execute, auto-sized by complexity.
-  Triggers on: "adp init", "adp map", "adp run", "adp status", "adp verify",
-  "adp pause", "adp resume".
+  Triggers on: "adp init", "adp map", "adp feature", "adp run",
+  "adp status", "adp verify", "adp pause", "adp resume".
 license: MIT
 metadata:
   author: bifrostlabs
@@ -101,6 +101,7 @@ to execute every phase, run sensors, and manage state.
 |---------|------------|
 | `adp init` | Detect stack, create `.adp/` + `.specs/`, configure sensors, generate guides |
 | `adp map` | Analyze codebase, produce `.adp/guides/` markdown files (7 docs) |
+| `adp feature [request]` | Create/switch to `feat/{feature-slug}`, seed feature spec, set phase to Specify |
 | `adp run [feature]` | Execute full pipeline E2E for a feature |
 | `adp status` | Read `.adp/state.json` and report |
 | `adp verify` | Run all sensors, report pass/fail |
@@ -262,6 +263,7 @@ to execute every phase, run sensors, and manage state.
   "status": "idle",
   "phase": null,
   "feature": null,
+  "branch": null,
   "complexity": null,
   "sprints": [],
   "activity": [],
