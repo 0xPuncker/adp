@@ -50,12 +50,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Derive bump from conventional commits since last tag
+          # Globally highest semver tag — handles orphaned tags left by squash-merge races
+          # where a release commit is overwritten by a subsequent PR merge.
+          HIGHEST_TAG=$(git tag --sort=-version:refname | head -1)
+          # Last tag reachable from HEAD — defines the commit range for bump analysis.
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
           if [ -z "$LAST_TAG" ]; then
             COMMITS=$(git log --oneline)
           else
-            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline)
+            # Strip release-bot chore commits: they must not drive a new bump
+            # (otherwise every release commit would trigger an infinite loop of patch bumps).
+            COMMITS=$(git log "${LAST_TAG}..HEAD" --oneline | grep -vE "^[a-f0-9]+ chore\(release\):")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "No releasable commits since ${LAST_TAG:-start} — skipping release"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           BUMP="patch"
@@ -65,9 +77,22 @@ jobs:
             BUMP="minor"
           fi
 
+          # Sync package.json to the globally highest tag before bumping.
+          # Prevents version drift when release commits are lost to squash-merge races.
+          if [ -n "$HIGHEST_TAG" ]; then
+            npm version "${HIGHEST_TAG#v}" --no-git-tag-version --allow-same-version >/dev/null
+          fi
+
           NEW_VERSION=$(npm version $BUMP --no-git-tag-version)
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
           echo "bump=${BUMP}" >> "$GITHUB_OUTPUT"
+
+          # Idempotency guard: a prior run already succeeded for this version — skip cleanly.
+          if git tag -l "$NEW_VERSION" | grep -q "^${NEW_VERSION}$"; then
+            echo "Tag $NEW_VERSION already exists — skipping release"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           git add package.json package-lock.json
           git commit -m "chore(release): ${NEW_VERSION}"
@@ -76,6 +101,7 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        if: steps.version.outputs.version != ''
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
@@ -88,6 +114,7 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        if: steps.version.outputs.version != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
@@ -98,6 +125,7 @@ jobs:
           generate_release_notes: true
 
       - name: Publish to npm
+        if: steps.version.outputs.version != ''
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
