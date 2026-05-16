@@ -881,22 +881,44 @@ Specs: .specs/features/{feature}/
 Branch: feat/{feature-slug}
 ```
 
-**Then push + open PR (Gated — ask once):**
+**Then push + open PR/MR (Gated — ask once):**
+
+Always write a real review description to the hosting service. Do not open a
+GitHub PR or GitLab MR with an empty body, `--fill` only, or a placeholder.
+The description must cover the full branch diff in short prose:
+
+- What changed and the user/developer impact.
+- Why it changed, or the root cause when this is a fix.
+- Docs, tests, and validation performed.
+- Any manual review steps or residual risks.
+
+Use the provider available in the project:
+- GitHub: `gh pr create --body-file <file>` or `--body "<markdown>"`.
+- GitLab: `glab mr create --description-file <file>` or equivalent API field.
+
+PR/MR body style:
+
+```markdown
+Adds `adp feature <request>` so the CLI can slug a request, create or check out
+`feat/<slug>`, seed `.specs/features/<slug>/spec.md`, and move state into Specify.
+
+It records the active branch in pipeline state/status output and exports the new
+feature helpers for library consumers.
+
+Docs now list the command, and tests cover slugging, branch reuse, spec
+preservation, and state updates.
+
+Validation: `npm run typecheck`, `npm run lint`, `npm test`.
+```
 
 ```bash
 git push -u origin feat/{feature-slug}
 gh pr create \
   --title "{feature}: {one-line summary of what was built}" \
-  --body "## Summary
-- {bullet: what REQs were implemented}
-- {bullet: key design decisions}
-
-## Test plan
-- Sensors: typecheck ✓ lint ✓ test ✓
-- {any manual steps the reviewer should take}"
+  --body-file .specs/features/{feature}/pr-body.md
 ```
 
-Log the PR URL to `state.json → activity[]` as `type: "pr_opened"`.
+Log the PR/MR URL to `state.json → activity[]` as `type: "pr_opened"`.
 
 That is the entire output. No "I hope this helps." No "Let me know if you have questions."
 
