@@ -349,7 +349,8 @@ to execute every phase, run sensors, and manage state.
    **How to apply:** When adding a new memory, create a page in this database via
    `mcp__claude_ai_Notion__notion-create-pages` with
    `data_source_id: 2d1ac8c4-819a-4562-a57b-944dc613b18f` and `Project: "<slug>"`.
-   When recalling, query via `notion-query-database-view`.
+   When recalling or searching, use `notion-search` + `notion-fetch` (not `notion-query-database-view` — requires Business plan).
+   Update `Last verified` via `notion-update-page` whenever a memory is confirmed accurate (see Notion Memory Sync section).
    Keep local `.md` files and Notion in sync — both should reflect the same set of memories.
    ```
 
@@ -1999,6 +2000,9 @@ the "ADP Memory" Notion database — **in the same operation, not later**.
   `Name` + `Project`, then update it via `notion-update-page`.
 - **Delete/Supersede:** Memory marked stale or deleted → update the Notion page's
   `Status` field to `stale` or `superseded`.
+- **Recall:** Memory read during an ADP operation and its content confirmed still accurate →
+  update `Last verified` to today. Batch at the end of the operation (end of `adp run`,
+  `adp init`, `adp resume`) — not on every individual read.
 - **Skip sync for:** `MEMORY.md` (index file), `reference_notion_memory.md` (pointer file).
   Only sync files that contain actual memories (have `metadata.type` frontmatter).
 
@@ -2036,6 +2040,7 @@ Before mapping fields to Notion, strip the following from `Body`, `Why`, and `Ho
 | `**Why:** ...` line    | `Why` (text)      | Strip the `**Why:** ` prefix (sanitized) |
 | `**How to apply:** ...` line | `How to apply` (text) | Strip the `**How to apply:** ` prefix (sanitized) |
 | _(always)_             | `Status`          | Set to `"active"` on create; update explicitly when stale |
+| _(recall-confirm only)_ | `Last verified` (date) | `date:Last verified:start` = ISO date (e.g. `2026-05-17`). Update on recall-confirm, NOT on write. |
 
 **Step 4 — Create or update:**
 
@@ -2061,6 +2066,34 @@ mcp__claude_ai_Notion__notion-search
   query_type: internal
 ```
 Then call `notion-update-page` on the matching result's `id`.
+
+### Last verified — recall-confirm protocol
+
+`Last verified` tracks when a memory was last read and confirmed still accurate.
+It is distinct from `Created` (set once at write-time, auto-managed by Notion).
+
+**Update Last verified when:**
+- End of `adp run` — for every memory whose content matched observed state during the run.
+- `adp init` — update the `notion-memory-db` pointer entry to confirm the DB is reachable.
+- `adp resume` — for every memory re-read and confirmed during orientation.
+- On explicit user request to verify or refresh memories.
+
+**Do NOT update Last verified when:**
+- A memory is first created (that's `Created`).
+- A memory's content is corrected (the correction signals it was stale — update `Status: stale` instead, then write a fresh entry).
+- A memory is read but not confirmed against current state (e.g. skimming MEMORY.md index).
+
+**How to update (per page):**
+```
+notion-update-page
+  page_id:  <id from prior search or create>
+  command:  update_properties
+  properties:
+    date:Last verified:start: <YYYY-MM-DD>
+```
+
+Batch across multiple pages — one `notion-update-page` call per page, in sequence.
+On failure, log a one-line warning and continue — never block on a Last verified update.
 
 ### Failure handling
 
