@@ -1458,13 +1458,28 @@ ADP halts and emits a structured blocker report in exactly **four cases**:
 | `sensor-fail` | Same sensor fails 3× on the same task with the same error |
 | `gated-denied` | User denies a gated action |
 | `git-conflict` | Merge conflict that cannot be auto-resolved |
-| `dep-required` | A new dependency must be installed (npm/cargo/pip install) |
+| `dep-required` | A Gated dep install was proposed and the user denied it |
 
 **When triggered:**
 1. Stop ALL work on the affected task
 2. Log to `state.json → blockers[]` AND `STATE.md → Blockers`
 3. Output the structured blocker report (format in CRITICAL RULES section) — nothing else
 4. Wait for user input
+
+**Dependency installation — follow this exact flow, never skip to blocker:**
+
+When a missing package is detected during build:
+1. Identify each package and whether it's a prod dep or devDep.
+2. Propose a Gated install — ask once, clearly:
+   - Runtime: `npm install --ignore-scripts <pkg>`
+   - Dev: `npm install --ignore-scripts --save-dev <pkg>`
+   - Do NOT chain with `&&` — issue each as a separate call.
+3. **If approved** — run the install, then continue the sprint normally.
+4. **If denied** — ONLY NOW emit a `dep-required` blocker.
+
+Do not emit `dep-required` before attempting the Gated install.
+npm install for a newly-required dep is Gated by convention and does NOT
+need to be declared in `harness.yaml → actions:`.
 
 **Not a blocker — resolve autonomously:**
 - Sensor fails 1–2 times: fix and retry
@@ -1537,8 +1552,11 @@ unprompted.
 
 **Rules**:
 
-1. **Never run a Gated or Always-ask command outside `actions:`.** If you need
-   an action that isn't declared, propose adding it to `harness.yaml` first.
+1. **Never run a Gated or Always-ask command outside `actions:`** — with two
+   built-in exceptions that are Gated by convention and need no declaration:
+   - `npm install --ignore-scripts <pkg>` (missing dep discovered during build)
+   - `git push -u origin feat/*` + `gh pr create` (end-of-run)
+   Any other undeclared Gated command: propose adding it to `harness.yaml` first.
 2. **Record every action execution** in `state.json → activity[]` with type
    `action_run` and the zone.
 3. **Prerequisites from spec.md** (see spec template) map to `actions:` entries.
