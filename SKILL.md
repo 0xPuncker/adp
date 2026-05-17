@@ -9,7 +9,7 @@ description: >
   "adp status", "adp verify", "adp pause", "adp resume".
 license: MIT
 metadata:
-  author: bifrostlabs
+  author: 0xPuncker
   version: 0.3.0
 ---
 
