@@ -787,13 +787,9 @@ For each task:
      ```
      feat(scope): short summary of what changed
      ```
-     Optional bullet body when multiple distinct things changed:
-     ```
-     refactor(auth): extract token validation into standalone module
-     - Move verifyJwt() out of middleware into auth/token.ts
-     - Add unit tests covering expiry and malformed-token paths
-     - Update all callers to import from the new location
-     ```
+     **Subject line only — no body.** The `commit-msg` hook enforces this. If you feel
+     the need to explain more, that explanation belongs in the PR description or
+     `.specs/features/{feature}/spec.md`, not in git history.
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
 9. **Update artifacts:**
@@ -1716,15 +1712,17 @@ All commits follow standard Conventional Commits 1.0.0:
 <type>(<scope>): <summary>
 ```
 
-Optional bullet body when multiple distinct things changed:
-```
-<type>(<scope>): <summary>
-- What changed (file or module)
-- What changed (file or module)
-```
+**Subject line only — no body.** The `commit-msg` hook enforces this and will reject
+any non-blank content after the subject. Write a subject that is self-explanatory without
+a body — if it isn't, the scope or summary needs to be more precise, not longer.
 
-**No ADP-specific trailers** (`[ADP-TASK-NN]`, `[ADP-QUICK-NNN]`, etc.). Keep messages human-readable.
+Good: `feat(auth): add JWT expiry check`
+Bad: `feat(auth): various auth improvements`
+
+The PR description (not the commit) is where multi-point explanations belong.
 Traceability lives in `state.json` (sprint → commit SHA) and `tasks.md`, not in commit messages.
+
+**No ADP-specific trailers** (`[ADP-TASK-NN]`, `[ADP-QUICK-NNN]`, etc.).
 
 Types: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
