@@ -9,7 +9,7 @@ description: >
   "adp status", "adp verify", "adp pause", "adp resume".
 license: MIT
 metadata:
-  author: bifrostlabs
+  author: 0xPuncker
   version: 0.3.0
 ---
 
@@ -237,11 +237,18 @@ to execute every phase, run sensors, and manage state.
    - Go: `go vet ./...`, `golangci-lint run`, `go test ./...`
 
    Defaults by stack (sensors — security):
-   - TypeScript: `npm audit --audit-level=moderate`
-   - Rust: `cargo audit`
-   - Python: `pip-audit`, `bandit -r . -c pyproject.toml`
-   - Go: `govulncheck ./...`
+   - TypeScript: `npm audit --audit-level=moderate`, `npm audit signatures` (registry signature verification — npm 8.14+)
+   - Rust: `cargo audit`, `cargo deny check advisories` (supply chain + license policies; requires `deny.toml`)
+   - Python: `pip-audit`, `bandit -r . -c pyproject.toml`, `pip check` (installed dependency consistency)
+   - Go: `govulncheck ./...`, `go mod verify` (module checksum verification against sum database)
    - All stacks: `npx secretlint '**/*'` (secret scanning)
+
+   **Supply chain note:** `npm audit` / `cargo audit` / `pip-audit` only catch *known* CVEs.
+   They will NOT catch a hijacked package whose malicious version was published before an advisory
+   was filed (e.g. account-compromise attacks). The registry signature sensors (`npm audit signatures`,
+   `go mod verify`) add a second layer by verifying cryptographic provenance of downloaded packages.
+   For high-risk projects (crypto, finance, auth), also consider `socket check --ci` (Socket.dev)
+   which detects new-maintainer changes, obfuscated code, and install-script additions at PR time.
 
    Defaults (evaluator):
    - `enabled: true` unless user explicitly disables
@@ -451,6 +458,9 @@ These are injected into your context before each phase to prevent mistakes.
 
 ### `.adp/guides/security.md`
 - **Dependency health:** Pinned versions in lock file? Known vulnerabilities from `npm audit` / `cargo audit` / `pip-audit`?
+- **Supply chain posture:** Is `npm audit signatures` / `go mod verify` / `cargo deny` in the sensor suite?
+  Are all `npm install` calls using `--ignore-scripts`? Is the lockfile committed and does CI use `npm ci`?
+  Any deps installed from a URL or git ref instead of the official registry?
 - **Secret handling:** Env vars, vault references, or hardcoded? Scan for patterns: API keys, tokens, passwords in source
 - **Input validation:** Where does user input enter the system? Sanitization at boundaries?
 - **Auth & authz patterns:** How are routes protected? Token format, session handling, RBAC patterns
@@ -777,13 +787,9 @@ For each task:
      ```
      feat(scope): short summary of what changed
      ```
-     Optional bullet body when multiple distinct things changed:
-     ```
-     refactor(auth): extract token validation into standalone module
-     - Move verifyJwt() out of middleware into auth/token.ts
-     - Add unit tests covering expiry and malformed-token paths
-     - Update all callers to import from the new location
-     ```
+     **Subject line only — no body.** The `commit-msg` hook enforces this. If you feel
+     the need to explain more, that explanation belongs in the PR description or
+     `.specs/features/{feature}/spec.md`, not in git history.
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
 9. **Update artifacts:**
@@ -1474,12 +1480,25 @@ When a missing package is detected during build:
    - Runtime: `npm install --ignore-scripts <pkg>`
    - Dev: `npm install --ignore-scripts --save-dev <pkg>`
    - Do NOT chain with `&&` — issue each as a separate call.
-3. **If approved** — run the install, then continue the sprint normally.
+3. **If approved** — run the install, then **run a post-install security check**
+   before continuing:
+   - Node: `npm audit --audit-level=high` + `npm audit signatures`
+   - Rust: `cargo audit`
+   - Python: `pip-audit`
+   - Go: `go mod verify`
+   If the post-install check fails with a high/critical finding, treat it as a
+   `sensor-fail` (attempt 1 of 3). Do NOT commit the new dep until the audit passes.
 4. **If denied** — ONLY NOW emit a `dep-required` blocker.
 
 Do not emit `dep-required` before attempting the Gated install.
 npm install for a newly-required dep is Gated by convention and does NOT
 need to be declared in `harness.yaml → actions:`.
+
+**Supply chain hygiene on install:**
+- Always use `--ignore-scripts` — prevents malicious `postinstall` hooks from running.
+- Never install from a URL (`npm install https://...`) — always from the official registry.
+- If the package was published or updated within the last 7 days, flag it to the user
+  before installing: rapid new releases are a common indicator of a hijack.
 
 **Not a blocker — resolve autonomously:**
 - Sensor fails 1–2 times: fix and retry
@@ -1693,15 +1712,17 @@ All commits follow standard Conventional Commits 1.0.0:
 <type>(<scope>): <summary>
 ```
 
-Optional bullet body when multiple distinct things changed:
-```
-<type>(<scope>): <summary>
-- What changed (file or module)
-- What changed (file or module)
-```
+**Subject line only — no body.** The `commit-msg` hook enforces this and will reject
+any non-blank content after the subject. Write a subject that is self-explanatory without
+a body — if it isn't, the scope or summary needs to be more precise, not longer.
 
-**No ADP-specific trailers** (`[ADP-TASK-NN]`, `[ADP-QUICK-NNN]`, etc.). Keep messages human-readable.
+Good: `feat(auth): add JWT expiry check`
+Bad: `feat(auth): various auth improvements`
+
+The PR description (not the commit) is where multi-point explanations belong.
 Traceability lives in `state.json` (sprint → commit SHA) and `tasks.md`, not in commit messages.
+
+**No ADP-specific trailers** (`[ADP-TASK-NN]`, `[ADP-QUICK-NNN]`, etc.).
 
 Types: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
@@ -1752,6 +1773,27 @@ Enforced by security sensors and the `security` evaluator criterion:
   or a secrets manager. The `secret_scan` sensor catches leaked credentials.
 - **Dependency auditing:** The `audit` sensor runs `npm audit` / `cargo audit` /
   `pip-audit` on every sensor gate. Moderate+ vulnerabilities block the sprint.
+- **Supply chain verification:** CVE databases lag behind hijack events by hours
+  or days. A second layer of defense is required:
+  - **Node:** `npm audit signatures` verifies that every installed package was
+    signed by the official registry. Fails if a package was tampered with after
+    publication. Add to `harness.yaml` as a `security_signatures` sensor.
+  - **Rust:** `cargo deny check advisories` enforces a local policy (`deny.toml`)
+    covering advisories, banned crates, and license constraints.
+  - **Python:** `pip check` verifies installed packages have mutually compatible
+    requirements; `pip-audit` checks against OSV/PyPI advisory database.
+  - **Go:** `go mod verify` recomputes checksums for all downloaded modules and
+    compares against the module cache — detects tampered downloads.
+  - **All stacks (high-risk projects):** `socket check --ci` (Socket.dev) analyzes
+    each new package PR for: new maintainer, added install scripts, obfuscated code,
+    dependency confusion risk. Requires a Socket.dev account; skip for internal tools.
+- **Lockfile integrity:** Always commit `package-lock.json` / `Cargo.lock` /
+  `requirements.txt` hash pins. In CI, run `npm ci` (not `npm install`) — it reads
+  the lockfile exactly and refuses to install if it diverges from `package.json`.
+  An unlocked lockfile lets `npm install` silently upgrade to a malicious patch release.
+- **Install-time hygiene:** All `npm install` calls use `--ignore-scripts` to prevent
+  `postinstall` hooks from executing arbitrary code. No installs from URLs or git
+  refs — only from the official registry with an explicit semver range.
 - **Version pinning:** Dependencies must have pinned versions in the lock file.
   Unpinned `"latest"` or `"*"` ranges fail the security evaluator criterion.
 - **OWASP Top 10:** During code review, check for SQL injection (parameterized
