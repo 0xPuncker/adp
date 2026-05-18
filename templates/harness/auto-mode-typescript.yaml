@@ -1,16 +1,16 @@
-# .adp/harness.yaml — Auto-mode reference (pnpm)
+# .adp/harness.yaml — Auto-mode reference (TypeScript / Node)
 #
 # Scope
 #   Reference configuration for `adp auto-mode` runs. Maximum autonomy,
 #   maximum sensor coverage, zero shell metacharacters (the engine rejects
 #   any sensor command containing |, &&, ||, ;, $(), backticks, >, <, >>).
 #
-# Stack assumption: pnpm + TypeScript + Next.js/Vite/Express + Prisma.
-# Adapt the command prefixes per package manager:
-#   npm   → "npm run X", "npx Y"
-#   pnpm  → "pnpm run X", "pnpm exec Y"        (this file)
-#   yarn  → "yarn X", "yarn run Y"
-#   bun   → "bun run X", "bunx Y"
+# Stack assumption: TypeScript + Next.js/Vite/Express + Prisma.
+# Package manager: auto-detected from lockfile by `adp init`:
+#   package-lock.json → npm    (substitute "npm run X", "npx Y")
+#   pnpm-lock.yaml    → pnpm   (used in this template)
+#   yarn.lock         → yarn   (substitute "yarn X", "yarn run Y")
+#   bun.lockb         → bun    (substitute "bun run X", "bunx Y")
 
 mode: sprint
 min_score: 90

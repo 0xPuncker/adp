@@ -264,6 +264,32 @@ to execute every phase, run sensors, and manage state.
    Defaults (actions) — only populated when evidence is found in the repo
    (Dockerfile, docker-compose.yaml, prisma/ dir, fly.toml, etc.). Never invent.
 
+   **Auto-mode reference templates** — for users who plan to run `adp auto-mode`
+   (the maximum-autonomy variant), a more complete harness lives at
+   `templates/harness/auto-mode-<stack>.yaml`. These add runtime sensors
+   (`deps_check`, `smoke`, `e2e`, `build`) using stack-native patterns:
+
+   - **TypeScript:** `templates/harness/auto-mode-typescript.yaml` — uses
+     `start-server-and-test` (single command, no shell metachars) to spawn
+     the dev server, probe `http://localhost:PORT`, run Playwright, and tear
+     down. Substitute PM prefixes per the lockfile (`pnpm` is the template default).
+   - **Python:** `templates/harness/auto-mode-python.yaml` — uses pytest with
+     FastAPI's `TestClient` (or pytest-xprocess for real servers) so smoke
+     and e2e are just `pytest tests/smoke` and `pytest tests/e2e`. Defaults
+     to `uv`; swap `uv run` for `poetry run` / `pipenv run` / no prefix as
+     appropriate.
+   - **Rust:** `templates/harness/auto-mode-rust.yaml` — uses a
+     `cargo test --test smoke` integration test that spawns the server in a
+     tokio task on a random port and probes it. No external wrapper needed.
+   - **Go:** `templates/harness/auto-mode-go.yaml` — uses `httptest.NewServer`
+     inside a Go test for smoke. `go test ./internal/smoke` is the whole probe.
+
+   When generating `harness.yaml` during `adp init`, ask the user: *"Run
+   auto-mode-style harness (runtime + e2e sensors included) or minimal
+   harness (typecheck + lint + test only)?"* Default to minimal unless they
+   explicitly opt in. Auto-mode harnesses require additional tooling that
+   `adp auto-mode` will provision lazily at first invocation.
+
 5. **Initialize `state.json`:**
 
 ```json
@@ -1199,28 +1225,61 @@ a green PR with no interactive interruptions.
 
 ### Step 0: Pre-flight
 
-Before entering the run loop, verify the harness is auto-mode-shaped. If not,
-either upgrade it (with user permission) or proceed with what's available:
+Before entering the run loop, detect the stack, verify the harness is
+auto-mode-shaped, and provision missing tooling:
 
-1. **Harness check** — read `.adp/harness.yaml`. If `order` is missing the
-   runtime sensors (`deps_check`, `build`, `smoke`, `e2e`), offer to install
-   the reference template (`templates/harness/auto-mode.yaml` from the skill).
-   If declined, run with the existing sensors and note the gap in the final
-   summary.
+1. **Stack + package-manager detection** — read root files in this order. The
+   *first* match wins (for polyglot repos, the root-level manifest is the
+   driver; sub-package stacks are handled by the parent harness):
 
-2. **Tooling check** — confirm the runtime sensors can actually run:
-   - `start-server-and-test` present in devDependencies (needed for `smoke` + `e2e`)
-   - `@playwright/test` present + `playwright install --with-deps chromium` already executed
-   - If anything is missing, run the `playwright_install` action and `pnpm add -D`
-     the missing packages **once**, as a Gated action. After install, never
-     re-trigger `dep-required` blockers for the same package in this run.
+   | Detection file | Stack | PM selection signal | Reference template |
+   |---|---|---|---|
+   | `package.json` + `tsconfig.json` | **TypeScript** | `pnpm-lock.yaml` → pnpm; `package-lock.json` → npm; `yarn.lock` → yarn; `bun.lockb` → bun. `packageManager` field in `package.json` overrides lockfile. | `templates/harness/auto-mode-typescript.yaml` |
+   | `pyproject.toml` / `requirements.txt` | **Python** | `uv.lock` → uv; `poetry.lock` → poetry; `Pipfile.lock` → pipenv; else pip | `templates/harness/auto-mode-python.yaml` |
+   | `Cargo.toml` | **Rust** | cargo (canonical) | `templates/harness/auto-mode-rust.yaml` |
+   | `go.mod` | **Go** | go (canonical) | `templates/harness/auto-mode-go.yaml` |
 
-3. **Port isolation** — if running inside a worktree numbered N (state.json
-   `worktree_index` or derived from path), set `PORT = 3000 + N` in the
-   sprint's process env so parallel sprints don't collide. Rewrite the
-   `smoke` and `e2e` URLs accordingly.
+   Record the detected stack + PM in `state.json` under `stack` and `pm` so
+   subsequent sprints don't re-run detection.
 
-4. **Override autonomy for this run only** — do not write to harness.yaml;
+2. **Harness check** — read `.adp/harness.yaml`. If `order` is missing the
+   runtime sensors (`deps_check`, `smoke`, plus `build`/`e2e` where applicable),
+   offer to install the matching reference template from Step 1. If declined,
+   run with the existing sensors and note the gap in the final summary.
+
+3. **Rewrite command prefixes for the detected PM** — when loading the template,
+   substitute the PM-specific prefix throughout (don't write four near-identical
+   templates):
+
+   | Stack | PM | Substitution |
+   |---|---|---|
+   | TS | npm   | `npm run <script>`, `npx <bin>` |
+   | TS | pnpm  | `pnpm run <script>`, `pnpm exec <bin>` |
+   | TS | yarn  | `yarn <script>`, `yarn run <bin>` |
+   | TS | bun   | `bun run <script>`, `bunx <bin>` |
+   | Py | uv    | `uv run <bin>` |
+   | Py | poetry| `poetry run <bin>` |
+   | Py | pipenv| `pipenv run <bin>` |
+   | Py | pip   | `<bin>` (no prefix; assume venv active) |
+
+4. **Tooling check** — confirm the stack's runtime sensors can actually run.
+   If anything is missing, install it **once** as a Gated action (after install,
+   never re-trigger `dep-required` blockers for the same package in this run):
+
+   - **TypeScript:** `start-server-and-test` + `@playwright/test` in devDeps;
+     `playwright install --with-deps chromium` already executed.
+   - **Python:** `pytest`, `pytest-playwright`, `pytest-xprocess` in dev deps;
+     `playwright install --with-deps chromium` executed.
+   - **Rust:** `cargo-audit`, `cargo-deny` available on PATH; `deny.toml` at repo root.
+   - **Go:** `golangci-lint`, `govulncheck` available on PATH.
+
+5. **Port isolation** — if running inside a worktree numbered N (state.json
+   `worktree_index` or derived from path), set `PORT = 3000 + N` (TS),
+   `8000 + N` (Python), or the stack-default + N for Rust/Go in the sprint's
+   process env so parallel sprints don't collide. Rewrite `smoke` and `e2e`
+   URLs accordingly.
+
+6. **Override autonomy for this run only** — do not write to harness.yaml;
    hold the overrides in memory: `clarify=never`, `output=minimal`. Restore on exit.
 
 ### Step 1: Execute the pipeline

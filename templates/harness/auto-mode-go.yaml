@@ -1,0 +1,119 @@
+# .adp/harness.yaml — Auto-mode reference (Go)
+#
+# Stack assumption: Go 1.22+ modules, optional net/http or chi/echo/gin server.
+# No package-manager variant — `go` is canonical. golangci-lint is the
+# de-facto multi-linter and is assumed installed.
+#
+# Smoke/e2e pattern: Go's net/http/httptest spins up a real server in-process
+# from inside a test. No external probe wrapper needed.
+
+mode: sprint
+min_score: 90
+
+sensors:
+  # ── Static gates ───────────────────────────────────────────────────────────
+  format_check:
+    command: gofmt -l .
+    timeout: 30
+    fix_hint: "Run `gofmt -w .` to autofix."
+
+  typecheck:
+    command: go vet ./...
+    timeout: 60
+
+  lint:
+    command: golangci-lint run
+    timeout: 180
+    fix_hint: "Run `golangci-lint run --fix` for autofixable lints."
+
+  test:
+    command: go test -race -count=1 ./...
+    timeout: 600
+
+  # ── Dependency health ──────────────────────────────────────────────────────
+  # Verifies every module in the cache matches its checksum in go.sum.
+  # Catches tampering and lockfile drift.
+  deps_check:
+    command: go mod verify
+    timeout: 60
+    fix_hint: "Module checksum mismatch — run `go mod tidy` and review go.sum."
+
+  audit:
+    command: govulncheck ./...
+    timeout: 90
+    fix_hint: "Update affected modules or pin via go.mod replace."
+
+  secret_scan:
+    command: npx --yes secretlint "**/*"
+    timeout: 60
+    fix_hint: "Move secrets to env vars or a vault — never commit them."
+
+  # ── Runtime probe ──────────────────────────────────────────────────────────
+  # internal/smoke/smoke_test.go:
+  #   func TestBoot(t *testing.T) {
+  #       srv := httptest.NewServer(app.Handler())
+  #       defer srv.Close()
+  #       resp, err := http.Get(srv.URL + "/")
+  #       if err != nil { t.Fatal(err) }
+  #       if resp.StatusCode >= 500 { t.Fatalf("status %d", resp.StatusCode) }
+  #   }
+  smoke:
+    command: go test ./internal/smoke
+    timeout: 120
+    fix_hint: "Handler panics or returns 5xx on / — see test output."
+
+  # ── Build gate ─────────────────────────────────────────────────────────────
+  build:
+    command: go build ./...
+    timeout: 180
+
+order:
+  - deps_check
+  - format_check
+  - typecheck
+  - lint
+  - test
+  - audit
+  - secret_scan
+  - smoke
+  - build
+
+evaluator:
+  enabled: true
+  timing: per_sprint
+  criteria:
+    correctness:   93
+    completeness:  89
+    code_quality:  90
+    test_coverage: 93
+    security:      90
+    resilience:    80
+  live_test: false
+  # If you flip live_test: true above, this is how the evaluator boots the app.
+  # Single command, no shell metachars. The binary should respect PORT env.
+  live_test_command: go run .
+  live_test_timeout: 30
+
+autonomy:
+  clarify: never
+  output: minimal
+
+git:
+  branch: feat/{feature-slug}
+  push: gated
+  pr: gated
+
+actions:
+  db_up:
+    command: docker compose up -d postgres
+    zone: gated
+    auto_approve: true
+  db_down:
+    command: docker compose down
+    zone: gated
+    auto_approve: true
+  migrate:
+    command: go run ./cmd/migrate up
+    zone: gated
+    auto_approve: true
+    depends_on: [db_up]
