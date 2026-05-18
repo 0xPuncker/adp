@@ -19,7 +19,8 @@
     "templates/hooks",
     "templates/agents",
     "bin",
-    "dist"
+    "dist",
+    "completions"
   ],
   "scripts": {
     "build": "tsc",
