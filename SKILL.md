@@ -6,7 +6,7 @@ description: >
   and feedback sensors (lint, typecheck, test) enforced at every boundary.
   Phases: Specify → Design → Tasks → Execute, auto-sized by complexity.
   Triggers on: "adp init", "adp map", "adp feature", "adp run",
-  "adp status", "adp verify", "adp pause", "adp resume".
+  "adp auto-mode", "adp status", "adp verify", "adp pause", "adp resume".
 license: MIT
 metadata:
   author: 0xPuncker
@@ -103,6 +103,7 @@ to execute every phase, run sensors, and manage state.
 | `adp map` | Analyze codebase, produce `.adp/guides/` markdown files (7 docs) |
 | `adp feature [request]` | Create/switch to `feat/{feature-slug}`, seed feature spec, set phase to Specify |
 | `adp run [feature]` | Execute full pipeline E2E for a feature |
+| `adp auto-mode [feature]` | Maximum-autonomy variant of `adp run` — runtime + e2e sensors, auto-retry, no clarification questions, gated push/PR at the end |
 | `adp status` | Read `.adp/state.json` and report |
 | `adp verify` | Run all sensors, report pass/fail |
 | `adp evaluate` | Retroactively score unscored sprints using evaluator criteria |
@@ -1174,6 +1175,110 @@ enters design-first mode. No need for `adp design run` separately.
 Also, during `adp run`, if the user says "I have a Claude Design prototype for this"
 or provides handoff content, parse it with `DesignLoader.parseHandoff()` and save
 the bundle before proceeding to Specify.
+
+---
+
+## adp auto-mode [feature]
+
+Maximum-autonomy variant of `adp run`. Same pipeline, but optimised for
+unattended execution inside an isolated worktree (Conductor, sandbox, CI).
+
+**Use when:** the user wants the agent to take a feature request and return
+a green PR with no interactive interruptions.
+
+**Differences from `adp run`:**
+
+| Concern | `adp run` | `adp auto-mode` |
+|---|---|---|
+| Clarification gate | `autonomy.clarify` from harness (default `critical`) | Force `clarify: never` for this invocation |
+| Sensor set | `typecheck + lint + test` (+ whatever's in `order`) | Adds `deps_check`, `build`, `smoke`, `e2e` if available |
+| Failed-sensor retry | Block after 3 identical failures | Up to 3 *adaptive* retries: re-evaluate the diff and try a different fix each time, then block |
+| Evaluator below `min_score` | Block | Generate a fix-up sprint and retry once before blocking |
+| Output | `output` from harness | Force `output: minimal` |
+| Push / PR | Per harness `git.push` / `git.pr` | Same — both stay `gated`. The run ends with the prompt; the user clicks once |
+
+### Step 0: Pre-flight
+
+Before entering the run loop, verify the harness is auto-mode-shaped. If not,
+either upgrade it (with user permission) or proceed with what's available:
+
+1. **Harness check** — read `.adp/harness.yaml`. If `order` is missing the
+   runtime sensors (`deps_check`, `build`, `smoke`, `e2e`), offer to install
+   the reference template (`templates/harness/auto-mode.yaml` from the skill).
+   If declined, run with the existing sensors and note the gap in the final
+   summary.
+
+2. **Tooling check** — confirm the runtime sensors can actually run:
+   - `start-server-and-test` present in devDependencies (needed for `smoke` + `e2e`)
+   - `@playwright/test` present + `playwright install --with-deps chromium` already executed
+   - If anything is missing, run the `playwright_install` action and `pnpm add -D`
+     the missing packages **once**, as a Gated action. After install, never
+     re-trigger `dep-required` blockers for the same package in this run.
+
+3. **Port isolation** — if running inside a worktree numbered N (state.json
+   `worktree_index` or derived from path), set `PORT = 3000 + N` in the
+   sprint's process env so parallel sprints don't collide. Rewrite the
+   `smoke` and `e2e` URLs accordingly.
+
+4. **Override autonomy for this run only** — do not write to harness.yaml;
+   hold the overrides in memory: `clarify=never`, `output=minimal`. Restore on exit.
+
+### Step 1: Execute the pipeline
+
+Run the full `adp run` flow (Specify → Design → Tasks → Execute) with the
+behavioral changes above. State management, sprint contracts, evaluator
+scoring, commit cadence — all identical to `adp run`.
+
+### Step 2: Adaptive retry policy
+
+For each sensor failure, follow this loop instead of the standard 3-strikes rule:
+
+```
+attempt = 1
+while attempt <= 3:
+  diagnose:  read sensor output, diff since last attempt, last 20 lines of stderr
+  hypothesize: pick ONE concrete cause (missing import, wrong env var,
+               flaky timing, lint rule, type mismatch). Record in state.json
+               under sprints[N].auto_mode.attempts[attempt].
+  fix:       apply the targeted change. Do NOT shotgun-edit multiple files
+             unless the diagnosis explicitly requires it.
+  re-run:    re-run only the failing sensor first. If it passes, re-run the
+             full order to catch regressions.
+  if pass: break
+  attempt += 1
+if attempt > 3:
+  emit ⛔ BLOCKER (Type: sensor-fail) with all three attempts attached
+```
+
+The same shape applies to evaluator score < `min_score`: one fix-up sprint
+that targets the lowest-scoring criterion, then block if still below.
+
+### Step 3: End of run
+
+When all sprints are done and sensors green:
+
+1. Update `state.json` → `status: "completed"`.
+2. **Gated push** — surface a single prompt: *"Push `feat/{slug}` to origin?"*
+3. **Gated PR** — on push approval, surface: *"Open PR with this title/body?"*
+   (Title from the feature slug, body assembled from spec.md + sprint scores +
+   evaluator notes — see PR template logic in `adp run` Step 5.)
+4. Emit the final summary table (sprints × scores) and exit cleanly.
+
+### Halt conditions (same as `adp run`, with adaptive retry baked in)
+
+1. A sensor fails 3 *adaptive* attempts on the same task with diverging causes ruled out.
+2. A gated action is denied by the user.
+3. A git conflict cannot be auto-resolved.
+4. The evaluator scores below `min_score` after one fix-up sprint.
+
+Anything else: keep going.
+
+### What auto-mode does NOT do
+
+- It does not bypass the commit-msg hook (subject-line still enforced).
+- It does not force-push, rebase published commits, or merge the PR. Merging is always a human action.
+- It does not flip `auto_approve` on actions that ship as `always_ask` (e.g. `migrate_deploy`, deploys).
+- It does not skip the evaluator. If `evaluator.enabled: false`, refuse to enter auto-mode and tell the user to enable it first — autonomy without a quality gate is just fast wrong code.
 
 ---
 
