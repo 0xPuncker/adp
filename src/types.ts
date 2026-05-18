@@ -162,6 +162,7 @@ export interface AutonomyConfig {
 export interface HarnessConfig {
   mode: ExecutionMode;
   min_score: number;
+  rtk_enabled?: boolean;
   sensors: {
     execute: {
       computational: SensorConfig[];
