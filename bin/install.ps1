@@ -166,7 +166,11 @@ if ($SkillOnly) {
 
     try {
       Write-Log "Cloning repo..."
-      git clone --depth 1 --branch $Branch "https://github.com/$Repo.git" "$tmp\adp" --quiet
+      # `-c advice.detachedHead=false` suppresses git's detached-HEAD advisory when
+      # $Branch is a release tag (e.g. v0.8.0). The clone is one-shot, so the detached
+      # state is expected and the advisory just adds noise to `adp update`. --quiet
+      # does not cover this output.
+      git -c advice.detachedHead=false clone --depth 1 --branch $Branch "https://github.com/$Repo.git" "$tmp\adp" --quiet
       if ($LASTEXITCODE -ne 0) { Write-Fail "git clone failed" }
       Write-Ok "Cloned"
 
