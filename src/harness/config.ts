@@ -1,7 +1,25 @@
 import { readFile } from "node:fs/promises";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { resolve } from "node:path";
 import YAML from "yaml";
 import type { HarnessConfig, EvaluatorConfig, SensorConfig, ActionConfig, ActionZone, AutonomyConfig, ClarifyMode, OutputMode } from "../types.js";
+
+const execAsync = promisify(exec);
+
+/**
+ * Checks whether the `rtk` binary is available on PATH.
+ * Resolves false on any error so callers never need to catch.
+ */
+export async function detectRtk(): Promise<boolean> {
+  const cmd = process.platform === "win32" ? "where rtk" : "which rtk";
+  try {
+    await execAsync(cmd);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const DEFAULT_EVALUATOR: EvaluatorConfig = {
   enabled: true,
@@ -165,6 +183,7 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
     return {
       mode: parsed?.mode ?? "sprint",
       min_score: parsed?.min_score ?? 80,
+      rtk_enabled: parsed?.rtk_enabled === true,
       sensors: {
         execute: { computational: sensors },
       },

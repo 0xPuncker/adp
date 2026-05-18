@@ -1,5 +1,5 @@
 export { HarnessEngine } from "./harness/engine.js";
-export { loadHarnessConfig, SECURITY_SENSORS, validateSensorCommand } from "./harness/config.js";
+export { loadHarnessConfig, SECURITY_SENSORS, validateSensorCommand, detectRtk } from "./harness/config.js";
 export { sanitizeForNotion } from "./notion/sanitize.js";
 export { ContextLoader } from "./context/loader.js";
 export { StateManager } from "./state/manager.js";
