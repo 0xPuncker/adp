@@ -2,7 +2,7 @@ import { exec, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import type { SensorConfig, HarnessConfig } from "../types.js";
 import type { SensorChunk } from "../live/types.js";
-import { loadHarnessConfig } from "./config.js";
+import { loadHarnessConfig, detectRtk } from "./config.js";
 
 const execAsync = promisify(exec);
 
@@ -66,6 +66,7 @@ export function stripAnsi(input: string): string {
 export class HarnessEngine {
   private config: HarnessConfig | null = null;
   private cwd: string;
+  private rtkAvailable: boolean | null = null;
 
   constructor(cwd?: string) {
     this.cwd = cwd ?? process.cwd();
@@ -76,6 +77,23 @@ export class HarnessEngine {
       this.config = await loadHarnessConfig(this.cwd);
     }
     return this.config;
+  }
+
+  /**
+   * Returns the command to run for a sensor, prefixing with `rtk` when
+   * rtk_enabled is true and the rtk binary is available. Caches the PATH
+   * check so it only runs once per engine instance.
+   */
+  private async resolveCommand(sensor: SensorConfig): Promise<string> {
+    const config = await this.loadConfig();
+    if (!config.rtk_enabled) return sensor.command;
+    if (this.rtkAvailable === null) {
+      this.rtkAvailable = await detectRtk();
+      if (!this.rtkAvailable) {
+        console.warn("[adp] rtk_enabled is true but rtk binary not found — running sensors without RTK");
+      }
+    }
+    return this.rtkAvailable ? `rtk ${sensor.command}` : sensor.command;
   }
 
   /**
@@ -99,8 +117,9 @@ export class HarnessEngine {
    */
   async runSensor(sensor: SensorConfig): Promise<SensorResult> {
     const start = Date.now();
+    const cmd = await this.resolveCommand(sensor);
     try {
-      const { stdout, stderr } = await execAsync(sensor.command, {
+      const { stdout, stderr } = await execAsync(cmd, {
         timeout: sensor.timeout ?? 60_000,
         cwd: this.cwd,
       });
@@ -156,8 +175,9 @@ export class HarnessEngine {
     signal?: AbortSignal,
   ): Promise<SensorResult> {
     const start = Date.now();
+    const cmd = await this.resolveCommand(sensor);
     return new Promise<SensorResult>((resolveP) => {
-      const child = spawn(sensor.command, {
+      const child = spawn(cmd, {
         shell: true,
         cwd: this.cwd,
         env: process.env,
