@@ -6,7 +6,7 @@ description: >
   and feedback sensors (lint, typecheck, test) enforced at every boundary.
   Phases: Specify → Design → Tasks → Execute, auto-sized by complexity.
   Triggers on: "adp init", "adp map", "adp feature", "adp run",
-  "adp status", "adp verify", "adp pause", "adp resume".
+  "adp auto-mode", "adp status", "adp verify", "adp pause", "adp resume".
 license: MIT
 metadata:
   author: 0xPuncker
@@ -103,6 +103,7 @@ to execute every phase, run sensors, and manage state.
 | `adp map` | Analyze codebase, produce `.adp/guides/` markdown files (7 docs) |
 | `adp feature [request]` | Create/switch to `feat/{feature-slug}`, seed feature spec, set phase to Specify |
 | `adp run [feature]` | Execute full pipeline E2E for a feature |
+| `adp auto-mode [feature]` | Maximum-autonomy variant of `adp run` — runtime + e2e sensors, auto-retry, no clarification questions, gated push/PR at the end |
 | `adp status` | Read `.adp/state.json` and report |
 | `adp verify` | Run all sensors, report pass/fail |
 | `adp evaluate` | Retroactively score unscored sprints using evaluator criteria |
@@ -262,6 +263,32 @@ to execute every phase, run sensors, and manage state.
 
    Defaults (actions) — only populated when evidence is found in the repo
    (Dockerfile, docker-compose.yaml, prisma/ dir, fly.toml, etc.). Never invent.
+
+   **Auto-mode reference templates** — for users who plan to run `adp auto-mode`
+   (the maximum-autonomy variant), a more complete harness lives at
+   `templates/harness/auto-mode-<stack>.yaml`. These add runtime sensors
+   (`deps_check`, `smoke`, `e2e`, `build`) using stack-native patterns:
+
+   - **TypeScript:** `templates/harness/auto-mode-typescript.yaml` — uses
+     `start-server-and-test` (single command, no shell metachars) to spawn
+     the dev server, probe `http://localhost:PORT`, run Playwright, and tear
+     down. Substitute PM prefixes per the lockfile (`pnpm` is the template default).
+   - **Python:** `templates/harness/auto-mode-python.yaml` — uses pytest with
+     FastAPI's `TestClient` (or pytest-xprocess for real servers) so smoke
+     and e2e are just `pytest tests/smoke` and `pytest tests/e2e`. Defaults
+     to `uv`; swap `uv run` for `poetry run` / `pipenv run` / no prefix as
+     appropriate.
+   - **Rust:** `templates/harness/auto-mode-rust.yaml` — uses a
+     `cargo test --test smoke` integration test that spawns the server in a
+     tokio task on a random port and probes it. No external wrapper needed.
+   - **Go:** `templates/harness/auto-mode-go.yaml` — uses `httptest.NewServer`
+     inside a Go test for smoke. `go test ./internal/smoke` is the whole probe.
+
+   When generating `harness.yaml` during `adp init`, ask the user: *"Run
+   auto-mode-style harness (runtime + e2e sensors included) or minimal
+   harness (typecheck + lint + test only)?"* Default to minimal unless they
+   explicitly opt in. Auto-mode harnesses require additional tooling that
+   `adp auto-mode` will provision lazily at first invocation.
 
 5. **Initialize `state.json`:**
 
@@ -1174,6 +1201,143 @@ enters design-first mode. No need for `adp design run` separately.
 Also, during `adp run`, if the user says "I have a Claude Design prototype for this"
 or provides handoff content, parse it with `DesignLoader.parseHandoff()` and save
 the bundle before proceeding to Specify.
+
+---
+
+## adp auto-mode [feature]
+
+Maximum-autonomy variant of `adp run`. Same pipeline, but optimised for
+unattended execution inside an isolated worktree (Conductor, sandbox, CI).
+
+**Use when:** the user wants the agent to take a feature request and return
+a green PR with no interactive interruptions.
+
+**Differences from `adp run`:**
+
+| Concern | `adp run` | `adp auto-mode` |
+|---|---|---|
+| Clarification gate | `autonomy.clarify` from harness (default `critical`) | Force `clarify: never` for this invocation |
+| Sensor set | `typecheck + lint + test` (+ whatever's in `order`) | Adds `deps_check`, `build`, `smoke`, `e2e` if available |
+| Failed-sensor retry | Block after 3 identical failures | Up to 3 *adaptive* retries: re-evaluate the diff and try a different fix each time, then block |
+| Evaluator below `min_score` | Block | Generate a fix-up sprint and retry once before blocking |
+| Output | `output` from harness | Force `output: minimal` |
+| Push / PR | Per harness `git.push` / `git.pr` | Same — both stay `gated`. The run ends with the prompt; the user clicks once |
+
+### Step 0: Pre-flight
+
+Before entering the run loop, detect the stack, verify the harness is
+auto-mode-shaped, and provision missing tooling:
+
+1. **Stack + package-manager detection** — read root files in this order. The
+   *first* match wins (for polyglot repos, the root-level manifest is the
+   driver; sub-package stacks are handled by the parent harness):
+
+   | Detection file | Stack | PM selection signal | Reference template |
+   |---|---|---|---|
+   | `package.json` + `tsconfig.json` | **TypeScript** | `pnpm-lock.yaml` → pnpm; `package-lock.json` → npm; `yarn.lock` → yarn; `bun.lockb` → bun. `packageManager` field in `package.json` overrides lockfile. | `templates/harness/auto-mode-typescript.yaml` |
+   | `pyproject.toml` / `requirements.txt` | **Python** | `uv.lock` → uv; `poetry.lock` → poetry; `Pipfile.lock` → pipenv; else pip | `templates/harness/auto-mode-python.yaml` |
+   | `Cargo.toml` | **Rust** | cargo (canonical) | `templates/harness/auto-mode-rust.yaml` |
+   | `go.mod` | **Go** | go (canonical) | `templates/harness/auto-mode-go.yaml` |
+
+   Record the detected stack + PM in `state.json` under `stack` and `pm` so
+   subsequent sprints don't re-run detection.
+
+2. **Harness check** — read `.adp/harness.yaml`. If `order` is missing the
+   runtime sensors (`deps_check`, `smoke`, plus `build`/`e2e` where applicable),
+   offer to install the matching reference template from Step 1. If declined,
+   run with the existing sensors and note the gap in the final summary.
+
+3. **Rewrite command prefixes for the detected PM** — when loading the template,
+   substitute the PM-specific prefix throughout (don't write four near-identical
+   templates):
+
+   | Stack | PM | Substitution |
+   |---|---|---|
+   | TS | npm   | `npm run <script>`, `npx <bin>` |
+   | TS | pnpm  | `pnpm run <script>`, `pnpm exec <bin>` |
+   | TS | yarn  | `yarn <script>`, `yarn run <bin>` |
+   | TS | bun   | `bun run <script>`, `bunx <bin>` |
+   | Py | uv    | `uv run <bin>` |
+   | Py | poetry| `poetry run <bin>` |
+   | Py | pipenv| `pipenv run <bin>` |
+   | Py | pip   | `<bin>` (no prefix; assume venv active) |
+
+4. **Tooling check** — confirm the stack's runtime sensors can actually run.
+   If anything is missing, install it **once** as a Gated action (after install,
+   never re-trigger `dep-required` blockers for the same package in this run):
+
+   - **TypeScript:** `start-server-and-test` + `@playwright/test` in devDeps;
+     `playwright install --with-deps chromium` already executed.
+   - **Python:** `pytest`, `pytest-playwright`, `pytest-xprocess` in dev deps;
+     `playwright install --with-deps chromium` executed.
+   - **Rust:** `cargo-audit`, `cargo-deny` available on PATH; `deny.toml` at repo root.
+   - **Go:** `golangci-lint`, `govulncheck` available on PATH.
+
+5. **Port isolation** — if running inside a worktree numbered N (state.json
+   `worktree_index` or derived from path), set `PORT = 3000 + N` (TS),
+   `8000 + N` (Python), or the stack-default + N for Rust/Go in the sprint's
+   process env so parallel sprints don't collide. Rewrite `smoke` and `e2e`
+   URLs accordingly.
+
+6. **Override autonomy for this run only** — do not write to harness.yaml;
+   hold the overrides in memory: `clarify=never`, `output=minimal`. Restore on exit.
+
+### Step 1: Execute the pipeline
+
+Run the full `adp run` flow (Specify → Design → Tasks → Execute) with the
+behavioral changes above. State management, sprint contracts, evaluator
+scoring, commit cadence — all identical to `adp run`.
+
+### Step 2: Adaptive retry policy
+
+For each sensor failure, follow this loop instead of the standard 3-strikes rule:
+
+```
+attempt = 1
+while attempt <= 3:
+  diagnose:  read sensor output, diff since last attempt, last 20 lines of stderr
+  hypothesize: pick ONE concrete cause (missing import, wrong env var,
+               flaky timing, lint rule, type mismatch). Record in state.json
+               under sprints[N].auto_mode.attempts[attempt].
+  fix:       apply the targeted change. Do NOT shotgun-edit multiple files
+             unless the diagnosis explicitly requires it.
+  re-run:    re-run only the failing sensor first. If it passes, re-run the
+             full order to catch regressions.
+  if pass: break
+  attempt += 1
+if attempt > 3:
+  emit ⛔ BLOCKER (Type: sensor-fail) with all three attempts attached
+```
+
+The same shape applies to evaluator score < `min_score`: one fix-up sprint
+that targets the lowest-scoring criterion, then block if still below.
+
+### Step 3: End of run
+
+When all sprints are done and sensors green:
+
+1. Update `state.json` → `status: "completed"`.
+2. **Gated push** — surface a single prompt: *"Push `feat/{slug}` to origin?"*
+3. **Gated PR** — on push approval, surface: *"Open PR with this title/body?"*
+   (Title from the feature slug, body assembled from spec.md + sprint scores +
+   evaluator notes — see PR template logic in `adp run` Step 5.)
+4. Emit the final summary table (sprints × scores) and exit cleanly.
+
+### Halt conditions (same as `adp run`, with adaptive retry baked in)
+
+1. A sensor fails 3 *adaptive* attempts on the same task with diverging causes ruled out.
+2. A gated action is denied by the user.
+3. A git conflict cannot be auto-resolved.
+4. The evaluator scores below `min_score` after one fix-up sprint.
+
+Anything else: keep going.
+
+### What auto-mode does NOT do
+
+- It does not bypass the commit-msg hook (subject-line still enforced).
+- It does not force-push, rebase published commits, or merge the PR. Merging is always a human action.
+- It does not flip `auto_approve` on actions that ship as `always_ask` (e.g. `migrate_deploy`, deploys).
+- It does not skip the evaluator. If `evaluator.enabled: false`, refuse to enter auto-mode and tell the user to enable it first — autonomy without a quality gate is just fast wrong code.
 
 ---
 

@@ -1,0 +1,134 @@
+# .adp/harness.yaml — Auto-mode reference (Rust)
+#
+# Stack assumption: Cargo workspace, optional axum/actix-web/rocket server.
+# No package-manager variant — cargo is canonical.
+#
+# Smoke/e2e pattern: Rust doesn't need an external server-and-test wrapper.
+# An integration test in tests/smoke.rs spawns the server on a random port
+# inside a tokio task, probes it, then drops the task — all in one
+# `cargo test --test smoke` invocation.
+
+mode: sprint
+min_score: 90
+
+sensors:
+  # ── Static gates ───────────────────────────────────────────────────────────
+  format_check:
+    command: cargo fmt --all -- --check
+    timeout: 30
+    fix_hint: "Run `cargo fmt --all` to autofix."
+
+  typecheck:
+    command: cargo check --all-targets --all-features
+    timeout: 240
+
+  lint:
+    command: cargo clippy --all-targets --all-features -- -D warnings
+    timeout: 240
+    fix_hint: "Run `cargo clippy --fix` for autofixable lints."
+
+  test:
+    command: cargo test --workspace --all-features
+    timeout: 600
+
+  # ── Dependency health ──────────────────────────────────────────────────────
+  # --locked fails the build if Cargo.lock would need to change. Equivalent
+  # to "no lockfile drift allowed."
+  deps_check:
+    command: cargo fetch --locked
+    timeout: 120
+    fix_hint: "Cargo.lock drift — run `cargo update` and commit."
+
+  audit:
+    command: cargo audit
+    timeout: 60
+    fix_hint: "Update vulnerable crate or pin via [patch.crates-io]."
+
+  # Requires deny.toml at the repo root. Catches license violations and
+  # banned crates in addition to advisories.
+  supply_chain:
+    command: cargo deny check advisories
+    timeout: 60
+    fix_hint: "cargo-deny policy violation — see deny.toml."
+
+  secret_scan:
+    command: npx --yes secretlint "**/*"
+    timeout: 60
+    fix_hint: "Move secrets to env vars or a vault — never commit them."
+
+  # ── Runtime probe ──────────────────────────────────────────────────────────
+  # tests/smoke.rs:
+  #   #[tokio::test]
+  #   async fn boots_and_responds() {
+  #       let port = portpicker::pick_unused_port().unwrap();
+  #       let server = tokio::spawn(myapp::run(port));
+  #       let url = format!("http://127.0.0.1:{port}/");
+  #       for _ in 0..30 {
+  #           if reqwest::get(&url).await.is_ok() { return; }
+  #           tokio::time::sleep(Duration::from_millis(100)).await;
+  #       }
+  #       panic!("server never responded");
+  #   }
+  smoke:
+    command: cargo test --test smoke
+    timeout: 180
+    fix_hint: "Server failed to bind or respond — see tests/smoke.rs output."
+
+  # ── Release build gate ─────────────────────────────────────────────────────
+  build:
+    command: cargo build --release
+    timeout: 900
+    fix_hint: "Release build failed — usually different from `cargo check` due to optimization-only errors."
+
+order:
+  - deps_check
+  - format_check
+  - typecheck
+  - lint
+  - test
+  - audit
+  - supply_chain
+  - secret_scan
+  - smoke
+  - build
+
+evaluator:
+  enabled: true
+  timing: per_sprint
+  criteria:
+    correctness:   93
+    completeness:  89
+    code_quality:  90
+    test_coverage: 93
+    security:      90
+    resilience:    80
+  live_test: false
+  # If you flip live_test: true above, the evaluator runs this binary.
+  # Must be a single command — no shell metachars. The binary should bind to
+  # the port from env (PORT or APP_PORT) so parallel worktrees don't collide.
+  live_test_command: cargo run --release
+  live_test_timeout: 30
+
+autonomy:
+  clarify: never
+  output: minimal
+
+git:
+  branch: feat/{feature-slug}
+  push: gated
+  pr: gated
+
+actions:
+  db_up:
+    command: docker compose up -d postgres
+    zone: gated
+    auto_approve: true
+  db_down:
+    command: docker compose down
+    zone: gated
+    auto_approve: true
+  migrate:
+    command: sqlx migrate run
+    zone: gated
+    auto_approve: true
+    depends_on: [db_up]
