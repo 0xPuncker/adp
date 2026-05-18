@@ -336,11 +336,13 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
 | `adp map` | Analyze codebase, generate the 7 feedforward guides |
 | `adp feature <request>` | Create `feat/<slug>`, seed `.specs/features/<slug>/spec.md`, and start Specify |
 | `adp run <feature>` | Execute full pipeline for a feature |
+| `adp auto-mode <feature>` | Maximum-autonomy variant of `run` — runtime + e2e sensors, adaptive 3-attempt retry, gated push/PR at the end |
 | `adp status` | Show current sprint, phase, recent activity |
 | `adp verify` | Run all sensors; report pass/fail |
 | `adp pause` | Snapshot to `HANDOFF.md`; stop gracefully |
 | `adp resume` | Read handoff + state; continue from the exact stopping point |
 | `adp tui` | Open the live dashboard (sprint table, activity log, live agent panel) |
+| `adp completions <shell>` | Print bash / zsh / fish completion script to stdout |
 
 All commands are triggered in natural conversation with Claude Code — the agent
 reads `SKILL.md` and executes them using its built-in tools (Read, Write, Edit,
@@ -364,6 +366,47 @@ and rendered with elapsed time and prompt snippet.
 If the active session JSONL can't be located, the panel renders a degraded
 banner and the rest of the dashboard keeps working.
 
+### Auto-mode
+
+`adp auto-mode <feature>` is the unattended variant of `adp run`. It detects
+the project stack (TypeScript / Python / Rust / Go), installs the matching
+reference harness from `templates/harness/auto-mode-<stack>.yaml` if missing,
+overrides `autonomy.clarify=never` and `output=minimal` for the duration of
+the run, and applies an adaptive 3-attempt retry policy on sensor and
+evaluator failures (re-diagnose, target the cause, re-run — instead of
+identical retries). Push and PR remain gated at the end of the run; the
+user clicks once.
+
+Halt conditions:
+
+1. A sensor fails 3 adaptive attempts on the same task.
+2. A gated action is denied.
+3. A git conflict cannot be auto-resolved.
+4. The evaluator scores below `min_score` after one fix-up sprint.
+
+Auto-mode does not bypass the commit-msg hook, force-push, merge PRs, or
+flip `always_ask` actions to auto-approve. Autonomy without a quality gate
+is just fast wrong code — if `evaluator.enabled: false`, auto-mode refuses
+to start.
+
+### Shell completions
+
+Tab-complete commands, subcommands, feature slugs from `.specs/features/`,
+template names from the installed skill, and flags. Install:
+
+```bash
+# bash
+adp completions bash > /usr/local/etc/bash_completion.d/adp
+
+# zsh
+adp completions zsh > "${fpath[1]}/_adp"
+
+# fish
+adp completions fish > ~/.config/fish/completions/adp.fish
+```
+
+See `completions/README.md` for per-shell install paths and reload notes.
+
 ---
 
 ## Architecture
@@ -373,7 +416,15 @@ adp/
 ├── SKILL.md                       # Methodology the agent follows
 ├── README.md                      # You are here
 ├── templates/
-│   └── SPEC.md                    # Copy into .specs/features/{name}/spec.md
+│   ├── SPEC.md                    # Copy into .specs/features/{name}/spec.md
+│   ├── harness/                   # Reference harness.yaml per stack
+│   │   ├── auto-mode-typescript.yaml
+│   │   ├── auto-mode-python.yaml
+│   │   ├── auto-mode-rust.yaml
+│   │   └── auto-mode-go.yaml
+│   ├── hooks/                     # git hooks (commit-msg enforcer)
+│   └── agents/                    # evaluator / contract-reviewer / worktree
+├── completions/                   # bash / zsh / fish shell completions
 ├── src/
 │   ├── index.ts                   # Public exports
 │   ├── types.ts                   # Domain types (Sprint, Activity, PipelineState…)
@@ -429,6 +480,10 @@ Copy them when bootstrapping, or let the skill create them for you.
 | `SPEC.md` | `.specs/features/{name}/spec.md` | Feature spec with REQ-NN User Stories + WHEN/THEN criteria |
 | `tasks.md` | `.specs/features/{name}/tasks.md` | Atomic tasks with Requirement / Files / Reuses / Parallel / Commit |
 | `HANDOFF.md` | `.specs/HANDOFF.md` | Pause/resume snapshot — progress, sensors, next steps |
+| `harness/auto-mode-typescript.yaml` | `.adp/harness.yaml` | Auto-mode harness for TS/Node — `start-server-and-test` smoke + Playwright e2e |
+| `harness/auto-mode-python.yaml` | `.adp/harness.yaml` | Auto-mode harness for Python — pytest with FastAPI `TestClient` for smoke, pytest-playwright for e2e |
+| `harness/auto-mode-rust.yaml` | `.adp/harness.yaml` | Auto-mode harness for Rust — `cargo test --test smoke` spawns the server in a tokio task |
+| `harness/auto-mode-go.yaml` | `.adp/harness.yaml` | Auto-mode harness for Go — `httptest.NewServer` inside a Go test for smoke |
 
 Bootstrap a new feature manually:
 
