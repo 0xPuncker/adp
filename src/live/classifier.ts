@@ -12,6 +12,10 @@ const PATTERNS: ReadonlyArray<{ type: SubagentClassification; regex: RegExp }> =
     type: "contract-review",
     regex: /sprint contract|review the contract|contract review|address acceptance criteria/i,
   },
+  {
+    type: "adversary",
+    regex: /red[- ]team|adversar(?:ial|y)|property[- ]based|mutation testing|fault injection|edge[- ]case fuzz/i,
+  },
 ];
 
 /**
