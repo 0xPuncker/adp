@@ -163,6 +163,8 @@ export interface HarnessConfig {
   mode: ExecutionMode;
   min_score: number;
   rtk_enabled?: boolean;
+  linear_enabled?: boolean;
+  linear_team_id?: string;
   sensors: {
     execute: {
       computational: SensorConfig[];

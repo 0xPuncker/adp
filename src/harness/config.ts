@@ -180,10 +180,20 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       output: VALID_OUTPUT.has(autoCfg?.output) ? autoCfg.output : DEFAULT_AUTONOMY.output,
     };
 
+    const linear_enabled = parsed?.linear_enabled === true;
+    if (linear_enabled && !process.env.LINEAR_API_KEY) {
+      throw new Error(
+        "[adp] linear_enabled is true but LINEAR_API_KEY is not set. " +
+        "Export LINEAR_API_KEY before running ADP, or run `adp linear off` to disable."
+      );
+    }
+
     return {
       mode: parsed?.mode ?? "sprint",
       min_score: parsed?.min_score ?? 80,
       rtk_enabled: parsed?.rtk_enabled === true,
+      linear_enabled,
+      linear_team_id: typeof parsed?.linear_team_id === "string" ? parsed.linear_team_id : undefined,
       sensors: {
         execute: { computational: sensors },
       },
@@ -191,7 +201,10 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       actions,
       autonomy,
     };
-  } catch {
+  } catch (err) {
+    // Re-throw validation errors (e.g. missing LINEAR_API_KEY) so callers see them.
+    // Swallow only file-not-found / parse errors, falling back to defaults.
+    if (err instanceof Error && err.message.startsWith("[adp]")) throw err;
     return DEFAULT_CONFIG;
   }
 }
