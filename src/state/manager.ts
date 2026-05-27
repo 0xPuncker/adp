@@ -16,21 +16,24 @@ function normalizeSprint(s: any): Sprint {
     cost: s.cost ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
     startedAt: s.startedAt ?? null,
     completedAt: s.completedAt ?? null,
+    adversary: s.adversary ?? null,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-const EMPTY_STATE: PipelineState = {
-  status: "idle",
-  phase: null,
-  feature: null,
-  branch: null,
-  complexity: null,
-  sprints: [],
-  activity: [],
-  startedAt: null,
-  blockers: [],
-};
+function emptyState(): PipelineState {
+  return {
+    status: "idle",
+    phase: null,
+    feature: null,
+    branch: null,
+    complexity: null,
+    sprints: [],
+    activity: [],
+    startedAt: null,
+    blockers: [],
+  };
+}
 
 /**
  * Manages .adp/state.json — the persistent pipeline state.
@@ -65,7 +68,7 @@ export class StateManager {
         blockers: Array.isArray(parsed.blockers) ? parsed.blockers : [],
       } as PipelineState;
     } catch {
-      this.state = { ...EMPTY_STATE };
+      this.state = emptyState();
     }
     return this.state;
   }
@@ -208,6 +211,30 @@ export class StateManager {
   async logEvaluator(sprintId: number, score: number, retroactive = false): Promise<void> {
     const tag = retroactive ? " (retroactive)" : "";
     await this.logActivity("evaluator", `Sprint ${sprintId} scored: ${score}/100${tag}`);
+    await this.save();
+  }
+
+  /**
+   * Attach an adversary report to a sprint. If the report provides a resilienceScore,
+   * it overwrites `sprint.evaluator_scores.resilience` (honest score replaces self-assessment).
+   * If no sprint matches the id, this is a no-op.
+   */
+  async attachAdversaryReport(sprintId: number, report: import("../types.js").AdversaryReport): Promise<void> {
+    const state = await this.load();
+    const sprint = state.sprints.find((s) => s.id === sprintId);
+    if (!sprint) return;
+    sprint.adversary = report;
+    if (report.resilienceScore !== undefined) {
+      if (!sprint.evaluator_scores) {
+        sprint.evaluator_scores = {
+          correctness: 0,
+          completeness: 0,
+          code_quality: 0,
+          test_coverage: 0,
+        };
+      }
+      sprint.evaluator_scores.resilience = report.resilienceScore;
+    }
     await this.save();
   }
 }

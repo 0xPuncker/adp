@@ -50,6 +50,12 @@ export interface Activity {
   message: string;
 }
 
+export interface LinearState {
+  issueId: string;
+  issueUrl: string;
+  identifier: string;
+}
+
 export interface PipelineState {
   status: string;
   phase: string | null;
@@ -60,6 +66,7 @@ export interface PipelineState {
   activity: Activity[];
   startedAt: string | null;
   blockers: Blocker[];
+  linear?: LinearState;
 }
 
 export interface Blocker {

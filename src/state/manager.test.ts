@@ -3,6 +3,7 @@ import { StateManager } from "./manager.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AdversaryReport } from "../types.js";
 
 describe("StateManager", () => {
   let dir: string;
@@ -68,5 +69,85 @@ describe("StateManager", () => {
     expect(state.status).toBe("blocked");
     expect(state.blockers).toHaveLength(1);
     expect(state.blockers[0].sensor).toBe("test");
+  });
+
+  it("attaches adversary report to sprint (REQ-06.1, REQ-06.4)", async () => {
+    await manager.startPipeline("feat", "small");
+    const sprint = await manager.startSprint("TASK-01", "do something");
+    const report: AdversaryReport = {
+      sprintId: sprint.id,
+      startedAt: "2026-01-01T00:00:00Z",
+      completedAt: "2026-01-01T00:01:00Z",
+      strategies: ["property-test"],
+      findings: [],
+      resilienceScore: 85,
+      verdict: "robust",
+    };
+    await manager.attachAdversaryReport(sprint.id, report);
+    const state = await manager.load();
+    expect(state.sprints[0].adversary).toEqual(report);
+    // Persist roundtrip
+    const reloaded = await new StateManager(dir).load();
+    expect(reloaded.sprints[0].adversary).toEqual(report);
+  });
+
+  it("overwrites evaluator_scores.resilience when report has resilienceScore (REQ-06.2)", async () => {
+    await manager.startPipeline("feat", "small");
+    const sprint = await manager.startSprint("TASK-01", "do something");
+    await manager.updateSprint(sprint.id, {
+      evaluator_scores: {
+        correctness: 90,
+        completeness: 85,
+        code_quality: 80,
+        test_coverage: 75,
+        resilience: 70, // self-assessed
+      },
+    });
+    const report: AdversaryReport = {
+      sprintId: sprint.id,
+      startedAt: "2026-01-01T00:00:00Z",
+      completedAt: "2026-01-01T00:01:00Z",
+      strategies: ["property-test"],
+      findings: [],
+      resilienceScore: 55, // adversary found issues
+      verdict: "fragile",
+    };
+    await manager.attachAdversaryReport(sprint.id, report);
+    const state = await manager.load();
+    expect(state.sprints[0].evaluator_scores?.resilience).toBe(55);
+  });
+
+  it("initializes evaluator_scores when missing before setting resilience", async () => {
+    await manager.startPipeline("feat", "small");
+    const sprint = await manager.startSprint("TASK-01", "do thing");
+    const report: AdversaryReport = {
+      sprintId: sprint.id,
+      startedAt: "2026-01-01T00:00:00Z",
+      completedAt: "2026-01-01T00:01:00Z",
+      strategies: ["property-test"],
+      findings: [],
+      resilienceScore: 90,
+      verdict: "robust",
+    };
+    await manager.attachAdversaryReport(sprint.id, report);
+    const state = await manager.load();
+    expect(state.sprints[0].evaluator_scores).toBeDefined();
+    expect(state.sprints[0].evaluator_scores?.resilience).toBe(90);
+  });
+
+  it("is a no-op when sprint id does not exist (REQ-06.3)", async () => {
+    await manager.startPipeline("feat", "small");
+    const report: AdversaryReport = {
+      sprintId: 999,
+      startedAt: "2026-01-01T00:00:00Z",
+      completedAt: "2026-01-01T00:01:00Z",
+      strategies: ["property-test"],
+      findings: [],
+      resilienceScore: 100,
+      verdict: "robust",
+    };
+    await expect(manager.attachAdversaryReport(999, report)).resolves.not.toThrow();
+    const state = await manager.load();
+    expect(state.sprints).toHaveLength(0);
   });
 });
