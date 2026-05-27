@@ -797,7 +797,48 @@ For each task:
    **Soft pass:** All criteria above threshold. The evaluator's `suggestions[]` are
    logged but do NOT block the sprint.
 
-8. **On pass — Score and commit:**
+8. **Adversary QA** (if `adversary.enabled: true`):
+   Spawn a **red-team subagent** to break the sprint's code. This gate runs AFTER
+   sensors pass, evaluating the same code the evaluator approved but with an
+   adversarial mindset. Provide the sub-agent ONLY:
+   - The sprint diff (`git diff` from before sprint start)
+   - The sprint contract
+   - The adversary `strategies` enabled in `harness.yaml` (default: `property-test`)
+   - An instruction to return JSON matching `AdversaryReport`
+
+   The adversary searches for:
+   - Property-based invariants that don't hold for all inputs
+   - Mutations that existing tests fail to catch
+   - Fault-injection paths the code doesn't handle
+   - Edge cases that break behavior
+
+   It returns:
+   ```json
+   {
+     "sprintId": 1,
+     "startedAt": "...",
+     "completedAt": "...",
+     "strategies": ["property-test"],
+     "findings": [
+       { "strategy": "property-test", "severity": "high", "title": "...", "reproduction": "...", "affectedFile": "..." }
+     ],
+     "resilienceScore": 70,
+     "verdict": "fragile"
+   }
+   ```
+
+   **Gate behavior:**
+   - If `verdict: "broken"` OR any finding has `severity >= adversary.fail_on_severity`:
+     - Sprint FAILS. The findings become fix instructions.
+     - Attempt 1: Fix findings using adversary feedback, re-run sensors, re-run adversary.
+     - Attempt 2: Fix with broader context.
+     - Attempt 3: Log blocker, halt.
+   - If `verdict: "robust"` or `"fragile"` with no findings exceeding threshold:
+     - Sprint proceeds. The `resilienceScore` **overwrites** `evaluator_scores.resilience`
+       — the honest score from the adversary replaces the self-assessed value.
+     - Attach the full `AdversaryReport` to the sprint in `state.json` for future learning.
+
+9. **On pass — Score and commit:**
    - Final score = average of evaluator's criterion scores (NOT self-assessed).
    - If evaluator is disabled, **self-assess** using the same 6 criteria:
      - Re-read the sprint contract and diff. For each criterion:
@@ -820,7 +861,7 @@ For each task:
      `.specs/features/{feature}/spec.md`, not in git history.
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
-9. **Update artifacts:**
+10. **Update artifacts:**
    - `tasks.md` — check `- [x]` boxes on completed items, bump `Progress: N/total`
    - `state.json` — record sprint result:
      ```json
@@ -830,14 +871,18 @@ For each task:
        "status": "done",
        "contract": "{what was agreed}",
        "score": 84,
-       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80, "security": 78, "resilience": 72 },
+       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80, "security": 78, "resilience": 70 },
        "requirements": ["REQ-01", "REQ-01.1"],
        "commit": "abc123f",
-       "cost": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0 }
+       "cost": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0 },
+       "adversary": { "strategies": ["property-test"], "findings": [], "resilienceScore": 70, "verdict": "robust" }
      }
      ```
+     (Note: if `adversary.enabled: true`, the `resilience` score comes from the adversary's
+     `resilienceScore` and the full report is persisted under `adversary`. If disabled, `adversary`
+     is omitted.)
 
-10. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
+11. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
     Fresh context: re-read only files relevant to the next task.
     For heavy research or parallelizable independent tasks, consider
     [Sub-Agent Delegation](#sub-agent-delegation).
