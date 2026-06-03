@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "swiftui-animation",
+  "owner": "andrew-d",
+  "repo": "claude-skills",
+  "path": "plugins/swift-ios-skills--swiftui-skills/skills/swiftui-animation",
+  "branch": "main",
+  "sha": "be663cdba712cd52c36ed435928d78c440bf6c3e",
+  "source": "manual"
+}

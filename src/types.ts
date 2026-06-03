@@ -27,6 +27,10 @@ export interface EvaluatorScores {
   test_coverage: number;
   security?: number;
   resilience?: number;
+  // Mobile-specific criteria
+  mobile_ui?: number;
+  performance?: number;
+  accessibility?: number;
 }
 
 export interface EvaluatorVerdict {
@@ -222,4 +226,27 @@ export type VersionBump = "major" | "minor" | "patch";
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+}
+
+// ─── Mobile Types ────────────────────────────────────────────────
+
+export type MobilePlatform = "ios" | "android" | "flutter" | "react-native" | "unknown";
+export type MobileStack = "swiftui" | "uikit" | "jetpack-compose" | "flutter" | "react-native" | "unknown";
+
+export interface MobileProjectInfo {
+  platform: MobilePlatform;
+  stack: MobileStack;
+  buildSystem: string;
+  language: string;
+  hasTests: boolean;
+  metalShaders: boolean;
+  confidence: number;
+}
+
+export interface MobileEvaluatorConfig extends EvaluatorConfig {
+  criteria: EvaluatorScores & {
+    mobile_ui: number;
+    performance: number;
+    accessibility: number;
+  };
 }
