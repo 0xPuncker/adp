@@ -1,8 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { detectMobilePlatform, type MobileProjectInfo } from "./detector.js";
-import { generateMobileHarness, getEnabledSensors } from "./sensors.js";
-import { getMobileEvaluator } from "./evaluator.js";
+import { generateMobileHarness } from "./sensors.js";
 
 /**
  * Mobile ADP initialization.

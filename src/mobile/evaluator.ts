@@ -48,28 +48,28 @@ export const PLATFORM_EVALUATOR_OVERRIDES: Partial<
       ...DEFAULT_MOBILE_EVALUATOR.criteria,
       mobile_ui: 90, // Stricter UI requirements for iOS
       accessibility: 85, // Higher accessibility expectations on iOS
-    } as any,
+    } as EvaluatorScores,
   },
   android: {
     criteria: {
       ...DEFAULT_MOBILE_EVALUATOR.criteria,
       mobile_ui: 86, // Slightly lower due to fragmentation
       performance: 84, // Better performance expectations on Android
-    } as any,
+    } as EvaluatorScores,
   },
   flutter: {
     criteria: {
       ...DEFAULT_MOBILE_EVALUATOR.criteria,
       code_quality: 82, // Dart/Flutter has different patterns
       performance: 80, // Cross-platform performance tradeoffs
-    } as any,
+    } as EvaluatorScores,
   },
   "react-native": {
     criteria: {
       ...DEFAULT_MOBILE_EVALUATOR.criteria,
       code_quality: 82, // JavaScript/TypeScript patterns
       performance: 78, // React Native has more performance constraints
-    } as any,
+    } as EvaluatorScores,
   },
 };
 
@@ -81,8 +81,8 @@ export function getMobileEvaluator(
   platform: MobilePlatform
 ): MobileEvaluatorConfig {
   const overrides = PLATFORM_EVALUATOR_OVERRIDES[platform] || {};
-  const baseCriteria = DEFAULT_MOBILE_EVALUATOR.criteria as any;
-  const overrideCriteria = (overrides.criteria || {}) as any;
+  const baseCriteria = DEFAULT_MOBILE_EVALUATOR.criteria;
+  const overrideCriteria = (overrides.criteria || {});
 
   return {
     ...DEFAULT_MOBILE_EVALUATOR,
@@ -90,7 +90,7 @@ export function getMobileEvaluator(
     criteria: {
       ...baseCriteria,
       ...overrideCriteria,
-    },
+    } as EvaluatorScores,
   };
 }
 

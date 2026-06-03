@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export type MobilePlatform = "ios" | "android" | "flutter" | "react-native" | "unknown";
@@ -45,7 +45,6 @@ const REACT_NATIVE_INDICATORS = [
  * Returns platform info with confidence score (0-1).
  */
 export async function detectMobilePlatform(cwd: string): Promise<MobileProjectInfo> {
-  const files = await readdir(cwd);
   const scores: Record<MobilePlatform, number> = {
     ios: 0,
     android: 0,

@@ -238,7 +238,7 @@ export function generateMobileHarness(
 
   // Replace placeholders
   const sensorYaml = sensors.map((sensor) => {
-    let command = sensor.command
+    const command = sensor.command
       .replace("{APP_NAME}", appName)
       .replace("{TEST_TARGETS}", testTargets);
     return `  ${sensor.name}:
