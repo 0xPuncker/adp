@@ -91,7 +91,37 @@ if ($DryRun) {
 Write-Log "Step 1: Skill files -> $Target"
 
 if (Test-Path (Join-Path $Target ".git")) {
-  Write-Fail "$Target is a git clone - update with: git -C `"$Target`" pull"
+  Write-Log "Detected git clone at $Target — syncing to $Branch..."
+  if ($DryRun) {
+    Write-Log "[dry-run] Would run: git -C `"$Target`" fetch origin && git -C `"$Target`" reset --hard $Branch"
+  } else {
+    git -C $Target fetch origin --quiet 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Fail "git fetch failed in $Target" }
+    git -C $Target reset --hard $Branch --quiet 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Fail "git reset failed in $Target" }
+    Write-Ok "Skill updated via git"
+  }
+
+  # Skip the download steps below — git already synced everything.
+  if ($SkillOnly) {
+    Write-Host ""
+    Write-Warn "Skipping CLI install (`$env:ADP_SKILL_ONLY=1)"
+  }
+  Write-Host ""
+  Write-Ok "Skill installed"
+  if (-not $Force) {
+    Write-Host ""
+    Write-Panel `
+      -Title "Done - ADP ready" `
+      -TitleColor "Green" `
+      -Lines @(
+        "Skill: open Claude Code in any project, say 'adp init'",
+        "CLI:   adp status | adp sensors | adp evaluate | adp help",
+        "TUI:   adp tui  (or 'adp dashboard')"
+      )
+    Write-Host ""
+  }
+  exit 0
 }
 
 if (Test-Path $Target) {

@@ -119,11 +119,11 @@ log "Step 1: Skill files → $TARGET"
 if [ -d "$TARGET" ]; then
   if [ -d "$TARGET/.git" ]; then
     if [ "$DRY_RUN" = "1" ]; then
-      log "[dry-run] Would run: git -C \"$TARGET\" fetch origin && git -C \"$TARGET\" reset --hard origin/$BRANCH"
+      log "[dry-run] Would run: git -C \"$TARGET\" fetch origin && git -C \"$TARGET\" reset --hard $BRANCH"
     else
-      log "Detected git clone at $TARGET — syncing to origin/$BRANCH..."
+      log "Detected git clone at $TARGET — syncing to $BRANCH..."
       git -C "$TARGET" fetch origin --quiet 2>&1 || fail "git fetch failed in $TARGET"
-      git -C "$TARGET" reset --hard "origin/$BRANCH" --quiet 2>&1 || fail "git reset failed in $TARGET"
+      git -C "$TARGET" reset --hard "$BRANCH" --quiet 2>&1 || fail "git reset failed in $TARGET"
       ok "Skill updated via git"
     fi
     # Skip the download steps below — git already synced everything.
