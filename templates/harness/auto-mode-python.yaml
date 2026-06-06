@@ -1,0 +1,142 @@
+# .adp/harness.yaml — Auto-mode reference (Python)
+#
+# Stack assumption: Python 3.11+ + FastAPI/Flask/Django + pytest.
+# Package manager: auto-detected from lockfile by `adp init`:
+#   uv.lock        → uv          (modern, recommended — used in this template)
+#   poetry.lock    → poetry      (substitute "poetry run X" for "uv run X")
+#   Pipfile.lock   → pipenv      (substitute "pipenv run X")
+#   requirements.txt only → pip  (substitute "X" directly, no PM prefix)
+#
+# Smoke/e2e pattern: Python doesn't have a clean equivalent of
+# start-server-and-test. Instead we put the spawn-probe-teardown logic INSIDE
+# the test runner — FastAPI's TestClient runs the ASGI app in-process, and
+# pytest-playwright drives a real browser against the same server. Both end
+# up as single-command sensors (no shell metachars).
+
+mode: sprint
+min_score: 90
+
+sensors:
+  # ── Static gates ───────────────────────────────────────────────────────────
+  format_check:
+    command: uv run ruff format --check .
+    timeout: 30
+    fix_hint: "Run `uv run ruff format .` to autofix."
+
+  lint:
+    command: uv run ruff check .
+    timeout: 60
+    fix_hint: "Run `uv run ruff check --fix .` for autofixable issues."
+
+  typecheck:
+    command: uv run mypy .
+    timeout: 120
+
+  test:
+    command: uv run pytest -q
+    timeout: 300
+
+  # ── Dependency health ──────────────────────────────────────────────────────
+  # `uv sync --frozen` fails fast if pyproject.toml ↔ uv.lock are out of sync.
+  # No installation is performed if the env already matches.
+  deps_check:
+    command: uv sync --frozen
+    timeout: 120
+    fix_hint: "Lockfile drift — run `uv lock` and commit uv.lock."
+
+  audit:
+    command: uv run pip-audit
+    timeout: 60
+    fix_hint: "Update or override the vulnerable package via uv."
+
+  security_lint:
+    command: uv run bandit -r src -c pyproject.toml
+    timeout: 60
+    fix_hint: "Address bandit findings or add a justified per-line ignore."
+
+  secret_scan:
+    command: uv run detect-secrets scan --baseline .secrets.baseline
+    timeout: 60
+    fix_hint: "Move secrets to env vars; update .secrets.baseline if false-positive."
+
+  # ── Runtime probe ──────────────────────────────────────────────────────────
+  # tests/smoke/test_boot.py:
+  #   from fastapi.testclient import TestClient
+  #   from myapp.main import app
+  #   def test_boot():
+  #       r = TestClient(app).get("/")
+  #       assert r.status_code in (200, 307, 404)   # any non-500 = booted
+  # No subprocess, no port collisions, no teardown logic — pytest owns it all.
+  smoke:
+    command: uv run pytest tests/smoke -q
+    timeout: 120
+    fix_hint: "App fails to import or root endpoint 500s — see pytest output."
+
+  # ── End-to-end ─────────────────────────────────────────────────────────────
+  # tests/e2e/conftest.py spins the real server via pytest-xprocess or a
+  # uvicorn fixture; pytest-playwright drives the browser.
+  # Install once: uv pip install pytest-playwright pytest-xprocess
+  #               uv run playwright install --with-deps chromium
+  e2e:
+    command: uv run pytest tests/e2e -q --browser chromium
+    timeout: 600
+    fix_hint: "E2E failed — see Playwright traces in test-results/."
+
+order:
+  - deps_check
+  - format_check
+  - lint
+  - typecheck
+  - test
+  - audit
+  - security_lint
+  - secret_scan
+  - smoke
+  - e2e
+
+evaluator:
+  enabled: true
+  timing: per_sprint
+  criteria:
+    correctness:   93
+    completeness:  89
+    code_quality:  90
+    test_coverage: 93
+    security:      90
+    resilience:    80
+  live_test: false
+  # If you flip live_test: true above, the evaluator runs this to boot the app.
+  # Must be a single command — no shell metachars. Adapt per framework:
+  #   FastAPI:  uv run uvicorn myapp.main:app --port 8000
+  #   Flask:    uv run flask --app myapp run --port 8000
+  #   Django:   uv run python manage.py runserver 8000
+  live_test_command: uv run uvicorn myapp.main:app --port 8000
+  live_test_timeout: 30
+
+autonomy:
+  clarify: never
+  output: minimal
+
+git:
+  branch: feat/{feature-slug}
+  push: gated
+  pr: gated
+
+actions:
+  db_up:
+    command: docker compose up -d postgres
+    zone: gated
+    auto_approve: true
+  db_down:
+    command: docker compose down
+    zone: gated
+    auto_approve: true
+  migrate:
+    command: uv run alembic upgrade head
+    zone: gated
+    auto_approve: true
+    depends_on: [db_up]
+  playwright_install:
+    command: uv run playwright install --with-deps chromium
+    zone: gated
+    auto_approve: true
