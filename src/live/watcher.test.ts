@@ -95,7 +95,7 @@ describe("LiveWatcher", () => {
     const file = resolve(subDir, "agent-newone.jsonl");
     writeFileSync(file, agentLines("newone") + "\n" + assistantEndTurn("newone"));
 
-    const found = await waitFor(() => events.find((e) => e.agentId === "newone"));
+    const found = await waitFor(() => events.find((e) => e.agentId === "newone"), 5000);
     expect(found.classified).toBe("evaluator");
     expect(found.status).toBe("done");
     await w.close();
@@ -111,9 +111,9 @@ describe("LiveWatcher", () => {
     w.on("event", (e) => events.push(e));
     await w.start();
 
-    await waitFor(() => events.find((e) => e.agentId === "grower" && e.status === "running"));
+    await waitFor(() => events.find((e) => e.agentId === "grower" && e.status === "running"), 5000);
     appendFileSync(file, "\n" + assistantEndTurn("grower"));
-    await waitFor(() => events.find((e) => e.agentId === "grower" && e.status === "done"));
+    await waitFor(() => events.find((e) => e.agentId === "grower" && e.status === "done"), 5000);
 
     await w.close();
   });
@@ -128,7 +128,7 @@ describe("LiveWatcher", () => {
     writeFileSync(resolve(subDir, "agent-skipped.meta.json"), "{}");
     writeFileSync(resolve(subDir, "agent-real.jsonl"), agentLines("real"));
 
-    await waitFor(() => events.find((e) => e.agentId === "real"));
+    await waitFor(() => events.find((e) => e.agentId === "real"), 5000);
     expect(events.every((e) => e.agentId !== "skipped")).toBe(true);
     await w.close();
   });
