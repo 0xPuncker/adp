@@ -61,4 +61,23 @@ describe("classify", () => {
     const wts = [wt(2, "C:\\repo\\.adp\\worktrees\\sprint-2")];
     expect(classify("hello", null, wts).type).toBe("unknown");
   });
+
+  // ─── Adversary classification (REQ-05) ──────────────────────────
+
+  it("classifies red-team adversary prompts (REQ-05.1)", () => {
+    expect(classify("You are a red-team adversary", null, [])).toEqual({ type: "adversary", sprintId: null });
+  });
+
+  it("classifies on adversary vocabulary: adversarial, property-based, mutation, fault injection (REQ-05.3)", () => {
+    expect(classify("Apply mutation testing to this diff", null, []).type).toBe("adversary");
+    expect(classify("Propose property-based invariants for the changed functions", null, []).type).toBe("adversary");
+    expect(classify("adversarial test cases please", null, []).type).toBe("adversary");
+    expect(classify("Try fault injection on the API boundary", null, []).type).toBe("adversary");
+    expect(classify("Generate edge-case fuzz inputs", null, []).type).toBe("adversary");
+  });
+
+  it("preserves evaluator precedence over adversary (REQ-05.2)", () => {
+    const prompt = "You are a QA evaluator. Also propose property-based invariants.";
+    expect(classify(prompt, null, []).type).toBe("evaluator");
+  });
 });
