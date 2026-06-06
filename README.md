@@ -2,7 +2,7 @@
   <img src="docs/assets/adp-banner.svg" alt="ADP - Autonomous Development Pipeline" width="100%">
 </p>
 
-<h1 align="center">ADP - Autonomous Development Pipeline</h1>
+<h1 align="center">Autonomous Development Pipeline</h1>
 
 <p align="center">
   Harness-driven, spec-to-code execution for Claude Code.
