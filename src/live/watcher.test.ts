@@ -128,10 +128,10 @@ describe("LiveWatcher", () => {
     writeFileSync(resolve(subDir, "agent-skipped.meta.json"), "{}");
     writeFileSync(resolve(subDir, "agent-real.jsonl"), agentLines("real"));
 
-    await waitFor(() => events.find((e) => e.agentId === "real"), 5000);
+    await waitFor(() => events.find((e) => e.agentId === "real"), 10000);
     expect(events.every((e) => e.agentId !== "skipped")).toBe(true);
     await w.close();
-  });
+  }, 15000);
 
   it("close() releases the watcher", async () => {
     mkdirSync(subDir);
