@@ -21,22 +21,6 @@ export async function detectRtk(): Promise<boolean> {
   }
 }
 
-const execAsync = promisify(exec);
-
-/**
- * Checks whether the `rtk` binary is available on PATH.
- * Resolves false on any error so callers never need to catch.
- */
-export async function detectRtk(): Promise<boolean> {
-  const cmd = process.platform === "win32" ? "where rtk" : "which rtk";
-  try {
-    await execAsync(cmd);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const DEFAULT_EVALUATOR: EvaluatorConfig = {
   enabled: true,
   timing: "per_sprint",
