@@ -1,0 +1,143 @@
+# .adp/harness.yaml — Auto-mode reference (TypeScript / Node)
+#
+# Scope
+#   Reference configuration for `adp auto-mode` runs. Maximum autonomy,
+#   maximum sensor coverage, zero shell metacharacters (the engine rejects
+#   any sensor command containing |, &&, ||, ;, $(), backticks, >, <, >>).
+#
+# Stack assumption: TypeScript + Next.js/Vite/Express + Prisma.
+# Package manager: auto-detected from lockfile by `adp init`:
+#   package-lock.json → npm    (substitute "npm run X", "npx Y")
+#   pnpm-lock.yaml    → pnpm   (used in this template)
+#   yarn.lock         → yarn   (substitute "yarn X", "yarn run Y")
+#   bun.lockb         → bun    (substitute "bun run X", "bunx Y")
+
+mode: sprint
+min_score: 90
+
+sensors:
+  # ── Static gates ───────────────────────────────────────────────────────────
+  typecheck:
+    command: tsc --noEmit
+    timeout: 90
+
+  lint:
+    command: pnpm run lint
+    timeout: 90
+
+  test:
+    command: pnpm test
+    timeout: 180
+
+  # ── Dependency health ──────────────────────────────────────────────────────
+  # Catches the "Cannot find module" runtime crash class before boot:
+  # the lockfile is frozen, no install scripts run, and a mismatch fails fast.
+  deps_check:
+    command: pnpm install --frozen-lockfile --prefer-offline --ignore-scripts
+    timeout: 120
+    fix_hint: "Lockfile drift — run `pnpm install`, commit pnpm-lock.yaml, retry."
+
+  audit:
+    command: pnpm audit --audit-level=high
+    timeout: 60
+    fix_hint: "High-severity advisory — `pnpm update <pkg>` or pin via overrides."
+
+  secret_scan:
+    command: pnpm dlx secretlint "**/*"
+    timeout: 60
+    fix_hint: "Move secrets to env vars or a vault — never commit them."
+
+  # ── Build gate ─────────────────────────────────────────────────────────────
+  # Build runs as its own sensor instead of being chained with `&&` (which the
+  # engine would reject). A failed build short-circuits before smoke runs.
+  build:
+    command: pnpm run build
+    timeout: 300
+    fix_hint: "Build failed — fix compile errors before smoke/e2e can run."
+
+  # ── Runtime probe ──────────────────────────────────────────────────────────
+  # `start-server-and-test` is a single-command wrapper (no shell metachars):
+  #   1. Spawns the dev server.
+  #   2. Polls the URL until 200 OR timeout.
+  #   3. Runs the third argument (a no-op test = pure boot check).
+  #   4. Tears the server down. Exit 0 only if all steps succeeded.
+  # Install once:  pnpm add -D start-server-and-test
+  smoke:
+    command: pnpm exec start-server-and-test "pnpm run dev" "http://localhost:3000" "pnpm exec node --eval process.exit(0)"
+    timeout: 90
+    fix_hint: "App fails to boot — inspect dev server stderr, check PORT/env vars."
+
+  # ── End-to-end ─────────────────────────────────────────────────────────────
+  # Same trick: server is started + probed + Playwright runs against it +
+  # everything is torn down, all in one validator-safe command.
+  # Install once:  pnpm add -D @playwright/test start-server-and-test
+  #                pnpm exec playwright install --with-deps chromium
+  e2e:
+    command: pnpm exec start-server-and-test "pnpm run dev" "http://localhost:3000" "pnpm exec playwright test --reporter=line"
+    timeout: 600
+    fix_hint: "E2E failed — see playwright-report/ and test-results/ for traces."
+
+# Sensor execution order. `build` and `deps_check` gate everything downstream.
+# `smoke` is cheap and runs before `e2e` so we don't wait 10 minutes to learn
+# the app never started.
+order:
+  - deps_check
+  - typecheck
+  - lint
+  - test
+  - audit
+  - secret_scan
+  - build
+  - smoke
+  - e2e
+
+evaluator:
+  enabled: true
+  timing: per_sprint
+  criteria:
+    correctness:   93
+    completeness:  89
+    code_quality:  90
+    test_coverage: 93
+    security:      90
+    resilience:    80
+  # The runtime sensors above already cover "app boots + e2e passes", so the
+  # evaluator's live_test is redundant in auto-mode. Leave it off to keep the
+  # sprint cycle short and deterministic.
+  live_test: false
+  live_test_timeout: 30
+
+autonomy:
+  clarify: never
+  output: minimal
+
+git:
+  branch: feat/{feature-slug}
+  push: gated
+  pr: gated
+
+# External-world side effects. The engine validates these commands the same way
+# it validates sensors (no shell metachars). `auto_approve: true` is reserved
+# for actions that are safe to run unattended inside a Conductor worktree.
+actions:
+  db_up:
+    command: docker compose up -d postgres
+    zone: gated
+    auto_approve: true            # safe inside an isolated worktree
+  db_down:
+    command: docker compose down
+    zone: gated
+    auto_approve: true
+  migrate_dev:
+    command: pnpm prisma migrate dev
+    zone: gated
+    auto_approve: true
+    depends_on: [db_up]
+  migrate_deploy:
+    command: pnpm prisma migrate deploy
+    zone: always_ask              # never auto-run against shared DBs
+    depends_on: [db_up]
+  playwright_install:
+    command: pnpm exec playwright install --with-deps chromium
+    zone: gated
+    auto_approve: true

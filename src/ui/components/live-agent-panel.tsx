@@ -42,6 +42,7 @@ const CLASSIFY_ICON: Record<SubagentClassification, string> = {
   evaluator: "▣",
   "contract-review": "◆",
   worktree: "⌥",
+  adversary: "⚔",
   unknown: "·",
 };
 
@@ -49,6 +50,7 @@ const CLASSIFY_LABEL: Record<SubagentClassification, string> = {
   evaluator: "evaluator",
   "contract-review": "contract",
   worktree: "worktree",
+  adversary: "adversary",
   unknown: "agent",
 };
 

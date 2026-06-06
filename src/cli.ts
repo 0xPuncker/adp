@@ -89,6 +89,9 @@ async function main(): Promise<void> {
     case "dashboard":
       await launchTui();
       break;
+    case "completions":
+      await runCompletions(args[0]);
+      break;
     case "help":
     default:
       printUsage();
@@ -923,6 +926,42 @@ async function runUninstallCommand(): Promise<void> {
   );
 }
 
+const COMPLETION_SHELLS = new Set(["bash", "zsh", "fish"]);
+
+async function runCompletions(shell?: string): Promise<void> {
+  if (!shell || !COMPLETION_SHELLS.has(shell)) {
+    console.log(`  Usage: adp completions <bash|zsh|fish>
+
+  Prints the shell completion script to stdout. Redirect or eval it for
+  your shell — see completions/README.md for details.
+
+  Bash:  adp completions bash > /usr/local/etc/bash_completion.d/adp
+  Zsh:   adp completions zsh > "\${fpath[1]}/_adp"
+  Fish:  adp completions fish > ~/.config/fish/completions/adp.fish
+`);
+    if (shell !== undefined) process.exitCode = 1;
+    return;
+  }
+
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+
+  // dist/cli.js → ../completions/adp.<shell>
+  // src/cli.ts (tsx dev) → ../completions/adp.<shell>
+  const here = dirname(fileURLToPath(import.meta.url));
+  const scriptPath = join(here, "..", "completions", `adp.${shell}`);
+
+  try {
+    const content = await readFile(scriptPath, "utf-8");
+    process.stdout.write(content);
+  } catch {
+    console.error(`  Completion script not found at ${scriptPath}`);
+    console.error("  Reinstall ADP or report a bug at https://github.com/0xPuncker/adp/issues");
+    process.exitCode = 1;
+  }
+}
+
 async function launchTui(): Promise<void> {
   const { spawn } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
@@ -1044,6 +1083,7 @@ function printUsage(): void {
     { cmd: "design", args: "<sub> [feat]", desc: "extract | show | intake | run — tokens + components" },
     { cmd: "templates", args: "<sub>", desc: "list | show <name> | use <name> <feature>" },
     { cmd: "worktree", args: "<sub>", desc: "list | clean | add <N> | remove <N>" },
+    { cmd: "completions", args: "<shell>", desc: "Print bash | zsh | fish completion script" },
     { cmd: "update", args: "[--branch X]", desc: "Re-run installer (auto-detects platform)" },
     { cmd: "uninstall", args: "[-y]", desc: "Remove skill files + CLI + standalone binary" },
   ];

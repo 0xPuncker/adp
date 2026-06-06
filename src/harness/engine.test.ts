@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { HarnessEngine, stripAnsi } from "./engine.js";
-import { validateSensorCommand, loadHarnessConfig } from "./config.js";
-import { writeFile, mkdir, rm } from "node:fs/promises";
+import { validateSensorCommand, loadHarnessConfig, detectRtk } from "./config.js";
+import { writeFile, mkdir, rm, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { SensorChunk } from "../live/types.js";
@@ -200,5 +200,116 @@ describe("HarnessEngine.runSensorStreaming", () => {
     const combined = chunks.map((c) => c.text).join("");
     expect(combined).not.toMatch(/\x1B\[/);
     expect(combined).toMatch(/red/);
+  });
+});
+
+describe("loadHarnessConfig — rtk_enabled", () => {
+  it("parses rtk_enabled: true from yaml", async () => {
+    const dir = join(tmpdir(), `adp-rtk-cfg-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "rtk_enabled: true\n");
+    const cfg = await loadHarnessConfig(dir);
+    expect(cfg.rtk_enabled).toBe(true);
+    await rm(dir, { recursive: true });
+  });
+
+  it("defaults rtk_enabled to false when absent", async () => {
+    const dir = join(tmpdir(), `adp-rtk-cfg-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "mode: sprint\n");
+    const cfg = await loadHarnessConfig(dir);
+    expect(cfg.rtk_enabled).toBe(false);
+    await rm(dir, { recursive: true });
+  });
+});
+
+describe("loadHarnessConfig — linear_enabled", () => {
+  it("parses linear_enabled: true and linear_team_id from yaml", async () => {
+    const dir = join(tmpdir(), `adp-linear-cfg-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(
+      join(dir, ".adp", "harness.yaml"),
+      "linear_enabled: true\nlinear_team_id: team-abc\n",
+    );
+    const origKey = process.env.LINEAR_API_KEY;
+    process.env.LINEAR_API_KEY = "test-key";
+    try {
+      const cfg = await loadHarnessConfig(dir);
+      expect(cfg.linear_enabled).toBe(true);
+      expect(cfg.linear_team_id).toBe("team-abc");
+    } finally {
+      if (origKey === undefined) delete process.env.LINEAR_API_KEY;
+      else process.env.LINEAR_API_KEY = origKey;
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it("defaults linear_enabled to false when absent", async () => {
+    const dir = join(tmpdir(), `adp-linear-cfg-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "mode: sprint\n");
+    const cfg = await loadHarnessConfig(dir);
+    expect(cfg.linear_enabled).toBe(false);
+    expect(cfg.linear_team_id).toBeUndefined();
+    await rm(dir, { recursive: true });
+  });
+
+  it("throws a descriptive error when linear_enabled: true but LINEAR_API_KEY is absent", async () => {
+    const dir = join(tmpdir(), `adp-linear-nokey-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "linear_enabled: true\n");
+    const origKey = process.env.LINEAR_API_KEY;
+    delete process.env.LINEAR_API_KEY;
+    try {
+      await expect(loadHarnessConfig(dir)).rejects.toThrow("LINEAR_API_KEY");
+    } finally {
+      if (origKey !== undefined) process.env.LINEAR_API_KEY = origKey;
+      await rm(dir, { recursive: true });
+    }
+  });
+});
+
+describe("detectRtk", () => {
+  it("resolves a boolean without throwing", async () => {
+    const result = await detectRtk();
+    expect(typeof result).toBe("boolean");
+  });
+});
+
+describe("HarnessEngine — rtk_enabled", () => {
+  it("prefixes command with rtk when rtk_enabled and binary is available", async () => {
+    if (process.platform === "win32") return;
+    const dir = join(tmpdir(), `adp-rtk-eng-${Date.now()}`);
+    const binDir = join(dir, "bin");
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await mkdir(binDir, { recursive: true });
+
+    const fakeRtk = join(binDir, "rtk");
+    await writeFile(fakeRtk, "#!/bin/sh\necho RTK_CALLED $@\n");
+    await chmod(fakeRtk, 0o755);
+    await writeFile(join(dir, ".adp", "harness.yaml"), "rtk_enabled: true\n");
+
+    const origPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${origPath}`;
+    try {
+      const engine = new HarnessEngine(dir);
+      const result = await engine.runSensor({ name: "t", command: "echo hello", timeout: 5000 });
+      expect(result.passed).toBe(true);
+      expect(result.output).toContain("RTK_CALLED");
+    } finally {
+      process.env.PATH = origPath;
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it("runs original command unchanged when rtk_enabled is false", async () => {
+    const dir = join(tmpdir(), `adp-rtk-noprefix-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "rtk_enabled: false\n");
+    const engine = new HarnessEngine(dir);
+    const result = await engine.runSensor({ name: "t", command: "echo original", timeout: 5000 });
+    expect(result.passed).toBe(true);
+    expect(result.output).toContain("original");
+    await rm(dir, { recursive: true });
   });
 });
