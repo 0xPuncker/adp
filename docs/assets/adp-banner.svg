@@ -1,0 +1,64 @@
+<svg width="1280" height="320" viewBox="0 0 1280 320" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" role="img" aria-labelledby="title desc">
+  <title id="title">ADP Autonomous Development Pipeline banner</title>
+  <desc id="desc">A compact ADP banner showing the Specify, Design, Tasks, and Execute pipeline.</desc>
+  <defs>
+    <linearGradient id="bgP" x1="0" y1="0" x2="1280" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1D1812"/>
+      <stop offset="1" stop-color="#15110B"/>
+    </linearGradient>
+    <pattern id="dotP" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.5" fill="#ffffff" fill-opacity="0.025"/>
+    </pattern>
+    <radialGradient id="glowP" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(120 120) scale(520 360)">
+      <stop offset="0" stop-color="#D97757" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#D97757" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bgP)"/>
+  <rect width="1280" height="320" fill="url(#dotP)"/>
+  <rect width="1280" height="320" fill="url(#glowP)"/>
+
+  <rect x="72" y="74" width="46" height="6" rx="3" fill="#D97757"/>
+
+  <text x="68" y="190" font-size="118" font-weight="700" fill="#ECE3D6" letter-spacing="2">ADP</text>
+  <rect x="350" y="118" width="14" height="74" fill="#D97757"/>
+
+  <text x="74" y="230" font-size="21" fill="#9B9081" letter-spacing="3.5">Autonomous Development Pipeline</text>
+
+  <g font-size="17" letter-spacing="0.5">
+    <line x1="222" y1="276" x2="318" y2="276" stroke="#4A3D2E"/>
+    <line x1="470" y1="276" x2="566" y2="276" stroke="#4A3D2E"/>
+    <line x1="700" y1="276" x2="796" y2="276" stroke="#4A3D2E"/>
+
+    <g>
+      <rect x="74" y="258" width="148" height="36" rx="18" fill="#241D15" stroke="#3C3023"/>
+      <circle cx="98" cy="276" r="3.5" fill="#D97757"/>
+      <text x="114" y="281" fill="#C7BAA8">Specify</text>
+    </g>
+    <text x="282" y="281" text-anchor="middle" fill="#D97757" font-size="18">→</text>
+    <g>
+      <rect x="322" y="258" width="148" height="36" rx="18" fill="#241D15" stroke="#3C3023"/>
+      <circle cx="346" cy="276" r="3.5" fill="#D97757"/>
+      <text x="362" y="281" fill="#C7BAA8">Design</text>
+    </g>
+    <text x="530" y="281" text-anchor="middle" fill="#D97757" font-size="18">→</text>
+    <g>
+      <rect x="570" y="258" width="130" height="36" rx="18" fill="#241D15" stroke="#3C3023"/>
+      <circle cx="594" cy="276" r="3.5" fill="#D97757"/>
+      <text x="610" y="281" fill="#C7BAA8">Tasks</text>
+    </g>
+    <text x="760" y="281" text-anchor="middle" fill="#D97757" font-size="18">→</text>
+    <g>
+      <rect x="800" y="258" width="150" height="36" rx="18" fill="#2A2017" stroke="#5A4633"/>
+      <circle cx="824" cy="276" r="3.5" fill="#E5A982"/>
+      <text x="840" y="281" fill="#ECE3D6">Execute</text>
+    </g>
+  </g>
+
+  <g font-size="15" text-anchor="end" letter-spacing="0.5">
+    <text x="1208" y="138" fill="#6E6456">spec → code</text>
+    <text x="1208" y="166" fill="#6E6456">harness-driven</text>
+    <text x="1208" y="194" fill="#D97757">for Claude Code</text>
+  </g>
+</svg>

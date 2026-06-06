@@ -1,6 +1,27 @@
-# ADP - Autonomous Development Pipeline
+<p align="center">
+  <img src="docs/assets/adp-banner.svg" alt="ADP - Autonomous Development Pipeline" width="100%">
+</p>
 
-Harness-driven, spec-to-code execution for Claude Code.
+<h1 align="center">ADP - Autonomous Development Pipeline</h1>
+
+<p align="center">
+  Harness-driven, spec-to-code execution for Claude Code.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/adp"><img alt="npm version" src="https://img.shields.io/npm/v/adp?style=flat-square&label=npm&color=0f766e"></a>
+  <a href="https://nodejs.org/"><img alt="Node.js >= 22" src="https://img.shields.io/badge/node-%3E%3D22.0.0-339933?style=flat-square&logo=node.js&logoColor=white"></a>
+  <a href="https://github.com/0xPuncker/adp/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/0xPuncker/adp/release.yml?branch=main&style=flat-square&label=release"></a>
+  <a href="https://github.com/0xPuncker/adp/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/0xPuncker/adp?style=flat-square&label=github%20release"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/0xPuncker/adp?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="#architecture">Architecture</a>
+</p>
 
 ADP is a Claude Code **skill** that turns a spec file into shipped, committed code
 through four adaptive phases — **Specify → Design → Tasks → Execute** — with
@@ -17,17 +38,30 @@ typecheck, test) enforced at every boundary.
 
 ---
 
+## At a Glance
+
+| Capability | What ADP adds |
+|------------|---------------|
+| **Spec-to-code pipeline** | Adaptive phases from lightweight quick mode through full Specify → Design → Tasks → Execute. |
+| **Feedforward context** | `.adp/guides/` captures stack, architecture, conventions, testing, integrations, and risks before work starts. |
+| **Sensor gates** | Typecheck, lint, tests, and configured harness commands run at phase boundaries and before commits. |
+| **Traceability** | Requirements, tasks, sprint contracts, commits, and validation artifacts stay linked by stable IDs. |
+| **Agent operations** | Pause/resume state, live TUI, evaluator agents, stuck detection, and gated push/PR flow. |
+
+---
+
 ## Table of Contents
 
-1. [Install](#install)
-2. [Quick Start](#quick-start)
-3. [Methodology](#methodology)
-4. [Directory Layout](#directory-layout)
-5. [Commands](#commands)
-6. [Architecture](#architecture)
-7. [Templates](#templates)
-8. [Development](#development)
-9. [Influences](#influences)
+1. [At a Glance](#at-a-glance)
+2. [Install](#install)
+3. [Quick Start](#quick-start)
+4. [Methodology](#methodology)
+5. [Directory Layout](#directory-layout)
+6. [Commands](#commands)
+7. [Architecture](#architecture)
+8. [Templates](#templates)
+9. [Development](#development)
+10. [Influences](#influences)
 
 ---
 
