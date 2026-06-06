@@ -18,6 +18,7 @@ export interface Sprint {
   cost: TokenCost;
   startedAt: string | null;
   completedAt: string | null;
+  adversary?: AdversaryReport | null;
 }
 
 export interface EvaluatorScores {
@@ -53,6 +54,12 @@ export interface Activity {
   message: string;
 }
 
+export interface LinearState {
+  issueId: string;
+  issueUrl: string;
+  identifier: string;
+}
+
 export interface PipelineState {
   status: string;
   phase: string | null;
@@ -63,6 +70,7 @@ export interface PipelineState {
   activity: Activity[];
   startedAt: string | null;
   blockers: Blocker[];
+  linear?: LinearState;
 }
 
 export interface Blocker {
@@ -175,6 +183,40 @@ export interface HarnessConfig {
   evaluator: EvaluatorConfig;
   actions: Record<string, ActionConfig>;
   autonomy: AutonomyConfig;
+  adversary: AdversaryConfig;
+}
+
+// ─── Adversary (red-team subagent gate) ──────────────────────────
+
+export type AdversaryStrategy = "property-test" | "mutation" | "fault-inject" | "edge-fuzz";
+
+export type AdversarySeverity = "critical" | "high" | "medium" | "low";
+
+export interface AdversaryFinding {
+  strategy: AdversaryStrategy;
+  severity: AdversarySeverity;
+  title: string;
+  reproduction: string;
+  affectedFile: string;
+  suggestedFix?: string;
+}
+
+export interface AdversaryReport {
+  sprintId: number;
+  startedAt: string;
+  completedAt: string;
+  strategies: AdversaryStrategy[];
+  findings: AdversaryFinding[];
+  resilienceScore: number;
+  verdict: "robust" | "fragile" | "broken";
+}
+
+export interface AdversaryConfig {
+  enabled: boolean;
+  strategies: AdversaryStrategy[];
+  timeout_ms: number;
+  fail_on_severity: AdversarySeverity;
+  parallel: boolean;
 }
 
 // ─── Git Workflow Types ──────────────────────────────────────────

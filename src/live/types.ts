@@ -1,6 +1,6 @@
 import type { EvaluatorScores } from "../types.js";
 
-export type SubagentClassification = "evaluator" | "contract-review" | "worktree" | "unknown";
+export type SubagentClassification = "evaluator" | "contract-review" | "worktree" | "adversary" | "unknown";
 
 export type SubagentStatus = "running" | "done" | "errored";
 
