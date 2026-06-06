@@ -100,13 +100,19 @@ to execute every phase, run sensors, and manage state.
 | Trigger | What you do |
 |---------|------------|
 | `adp init` | Detect stack, create `.adp/` + `.specs/`, configure sensors, generate guides |
+| `adp mobile init` | Detect mobile platform (iOS/Android/Flutter/React Native), create mobile harness, generate mobile guides |
 | `adp map` | Analyze codebase, produce `.adp/guides/` markdown files (7 docs) |
+| `adp mobile map` | Analyze mobile codebase, produce platform-specific guides (iOS/Android/flutter guides) |
 | `adp feature [request]` | Create/switch to `feat/{feature-slug}`, seed feature spec, set phase to Specify |
 | `adp run [feature]` | Execute full pipeline E2E for a feature |
+| `adp mobile run [feature]` | Execute mobile pipeline for a feature (mobile sensors, mobile evaluator criteria) |
 | `adp auto-mode [feature]` | Maximum-autonomy variant of `adp run` — runtime + e2e sensors, auto-retry, no clarification questions, gated push/PR at the end |
 | `adp status` | Read `.adp/state.json` and report |
+| `adp mobile status` | Read mobile state.json and report platform-specific pipeline status |
 | `adp verify` | Run all sensors, report pass/fail |
+| `adp mobile verify` | Run mobile sensors (compile/lint/UI tests), report pass/fail |
 | `adp evaluate` | Retroactively score unscored sprints using evaluator criteria |
+| `adp mobile evaluate` | Score mobile sprints using mobile-specific criteria (mobile_ui, performance, accessibility) |
 | `adp design extract [feat]` | Extract design tokens + component inventory from project files |
 | `adp design intake <feat>` | Parse a Claude Design handoff and save as design bundle |
 | `adp design show <feat>` | Display the design bundle for a feature |
@@ -427,6 +433,117 @@ to execute every phase, run sensors, and manage state.
 
 ---
 
+## adp mobile init
+
+Mobile-specific initialization for iOS, Android, Flutter, and React Native projects.
+
+1. **Detect mobile platform** by reading project files:
+   - **iOS**: `Package.swift`, `Project.swift` (Tuist), `*.xcodeproj`, `Info.plist`
+   - **Android**: `build.gradle.kts`, `build.gradle`, `AndroidManifest.xml`
+   - **Flutter**: `pubspec.yaml`
+   - **React Native**: `package.json` with React Native dependencies
+
+2. **Create `.adp/` structure** (mobile-specific):
+
+```
+.adp/
+├── state.json        # Pipeline runtime state with platform field
+├── harness.yaml      # Mobile sensor configuration
+└── guides/
+    └── mobile/       # Platform-specific guides
+        ├── mobile-stack.md
+        ├── ios-architecture.md OR android-architecture.md
+        ├── ios-conventions.md OR android-conventions.md
+        ├── ios-testing.md OR android-testing.md
+        ├── ios-integrations.md OR android-integrations.md
+        ├── ios-concerns.md OR android-concerns.md
+        └── ios-security.md OR android-security.md
+```
+
+3. **Generate `harness.yaml`** with mobile sensors:
+
+**iOS sensors:**
+```yaml
+sensors:
+  compile:   tuist build --target {APP_NAME}
+  swiftlint: swiftlint lint --strict
+  test:      tuist test --test-targets {TEST_TARGETS}
+  metal:     python Scripts/validate_metal.py  # if Metal shaders present
+  snapshot:  fastlane snapshot                  # optional
+```
+
+**Android sensors:**
+```yaml
+sensors:
+  compile:    ./gradlew assembleDebug
+  detekt:    ./gradlew detekt
+  test:       ./gradlew test
+  android_test: ./gradlew connectedAndroidTest
+  lint:       ./gradlew lint
+```
+
+**Flutter sensors:**
+```yaml
+sensors:
+  analyze:    flutter analyze
+  test:       flutter test
+  build:      flutter build apk
+  ios_build:  flutter build ios
+```
+
+**React Native sensors:**
+```yaml
+sensors:
+  compile:     npm run android
+  ios_compile: npm run ios
+  test:        npm test
+  lint:        npm run lint
+```
+
+4. **Initialize mobile `state.json`:**
+
+```json
+{
+  "status": "idle",
+  "phase": null,
+  "feature": null,
+  "complexity": null,
+  "platform": "ios",  // or "android", "flutter", "react-native"
+  "sprints": [],
+  "activity": [],
+  "startedAt": null,
+  "blockers": []
+}
+```
+
+5. **Generate platform-specific guides** (8 mobile guides):
+   - `mobile-stack.md` — Platform detection, frameworks, build tools
+   - `ios-architecture.md` OR `android-architecture.md` — Module layout, patterns
+   - `ios-conventions.md` OR `android-conventions.md` — Naming, patterns, error handling
+   - `ios-testing.md` OR `android-testing.md` — Test framework, patterns
+   - `ios-integrations.md` OR `android-integrations.md` — External services, APIs
+   - `ios-concerns.md` OR `android-concerns.md` — Tech debt, hotspots, risks
+   - `ios-security.md` OR `android-security.md` — Secrets, storage, permissions
+
+6. **Add ADP mobile paths to `.gitignore`:**
+
+```gitignore
+# ADP Mobile — local pipeline state, feature specs, and skill artifacts (do not commit)
+.adp/
+.specs/
+.claude/skills/adp/
+```
+
+7. **Create mobile workflow templates** (4 templates):
+   - `mobile-feature.md` — Multi-screen feature with navigation
+   - `mobile-screen.md` — Single screen implementation
+   - `mobile-animation.md` — Animation/transition work
+   - `mobile-platform-integration.md` — Platform APIs (camera, location, etc.)
+
+8. **Immediately run `adp mobile map`** to populate guides from actual codebase.
+
+---
+
 ## adp map
 
 Analyze the codebase and write **8 feedforward guides** into `.adp/guides/`.
@@ -500,6 +617,105 @@ These are injected into your context before each phase to prevent mistakes.
 
 **Guide rules:**
 - Specific to THIS codebase. Not generic advice.
+- Include `file:line` references as evidence.
+- Concise — optimized for token budget.
+- Descriptive (what IS) not prescriptive (what SHOULD BE).
+
+---
+
+## adp mobile map
+
+Mobile-specific codebase analysis that generates platform-specific guides from an existing mobile codebase.
+
+**Read mobile project files to extract actual patterns:**
+
+### iOS Project Files
+- Package manifest (`Package.swift`) and Tuist config (`Project.swift`)
+- Xcode project structure (`*.xcodeproj`, `*.xcworkspace`)
+- Swift source files (`Source/**/*.swift`)
+- Test files (`**/*Test*.swift`, `**/*Tests.swift`)
+- Info.plist for app configuration
+
+### Android Project Files
+- Gradle build files (`build.gradle.kts`, `settings.gradle.kts`)
+- Android manifest (`AndroidManifest.xml`)
+- Kotlin source files (`app/src/main/**/*.kt`)
+- Test files (`app/src/test/**/*.kt`, `app/src/androidTest/**/*.kt`)
+- ProGuard/R8 configuration
+
+### Flutter Project Files
+- Package manifest (`pubspec.yaml`)
+- Dart source files (`lib/**/*.dart`)
+- Test files (`test/**/*_test.dart`)
+- Platform-specific files (`ios/`, `android/`)
+
+### React Native Project Files
+- Package manifest (`package.json`)
+- JavaScript/TypeScript source files (`src/**/*.{js,ts,tsx}`)
+- Native module files (`ios/`, `android/`)
+- Test files (`**/*.test.{js,ts}`)
+
+**Write platform-specific guides** (8 mobile guides):
+
+### `.adp/guides/mobile/mobile-stack.md`
+- Platform detection (iOS/Android/Flutter/React Native)
+- Language version (Swift, Kotlin, Dart, JS/TS)
+- Frameworks and their roles (SwiftUI, UIKit, Jetpack Compose, etc.)
+- Build tool, package manager (Tuist, Gradle, Flutter CLI, npm)
+- CI commands (from workflow files)
+- Key dependencies and their versions
+
+### `.adp/guides/mobile/ios-architecture.md` OR `android-architecture.md`
+- Module layout and responsibilities (features, screens, components)
+- Dependency direction (which modules import which)
+- Data flow (state management, repositories, networking)
+- Public API surface per module
+- Navigation patterns (NavigationStack, Activity/Fragment, Navigator)
+
+### `.adp/guides/mobile/ios-conventions.md` OR `android-conventions.md`
+- Naming patterns (camelCase, PascalCase, snake_case — what's actually used)
+- File naming (kebab-case? PascalCase? Match existing)
+- Import ordering (framework, project, third-party)
+- Error handling patterns (Result types, exceptions, nil-safety)
+- State management patterns (ViewModel, StateFlow, LiveData)
+- Export style (public, internal, private)
+- Include `file:line` references for each observation
+
+### `.adp/guides/mobile/ios-testing.md` OR `android-testing.md`
+- Test framework and assertion style (XCTest, JUnit, Jest)
+- Test file location (co-located or separate)
+- Mocking/stubbing patterns (dependency injection, fakes)
+- UI testing approach (XCUITest, Espresso, React Native Testing)
+- What gets tested and what doesn't
+- Performance testing strategies
+
+### `.adp/guides/mobile/ios-integrations.md` OR `android-integrations.md`
+- External services, APIs, SDKs in use
+- Firebase services (Auth, Analytics, Crashlytics, Messaging)
+- Platform SDKs (Google Play Services, Apple frameworks)
+- Auth/credential mechanisms (Keychain, Keystore, OAuth)
+- Rate limits, retry patterns observed
+- Mock/stub strategies for integration tests
+
+### `.adp/guides/mobile/ios-concerns.md` OR `android-concerns.md`
+- Tech debt hotspots, fragile modules
+- Known bugs, TODOs, FIXMEs with `file:line`
+- Performance hot paths (main thread blocking, memory leaks)
+- Risk areas to treat carefully
+- Platform-specific issues (ANRs, background app limits)
+
+### `.adp/guides/mobile/ios-security.md` OR `android-security.md`
+- **Dependency health:** Pinned versions in lock file, known vulnerabilities
+- **Secret handling:** Keychain (iOS), Keystore (Android), env vars, hardcoded secrets
+- **Input validation:** Where user input enters the system, sanitization at boundaries
+- **Auth & authz patterns:** Biometric auth, OAuth, session management, token handling
+- **OWASP mobile:** Insecure storage, hardcoded keys, insecure communication, root detection
+- **Platform security:** Code signing (iOS), ProGuard (Android), app transport security
+- **N+1 / performance risks:** DB queries in loops, unbounded list fetches
+- **Memory issues:** Leaks, retain cycles, large allocations, bitmap handling
+
+**Mobile guide rules:**
+- Specific to THIS mobile codebase. Not generic advice.
 - Include `file:line` references as evidence.
 - Concise — optimized for token budget.
 - Descriptive (what IS) not prescriptive (what SHOULD BE).
@@ -797,7 +1013,48 @@ For each task:
    **Soft pass:** All criteria above threshold. The evaluator's `suggestions[]` are
    logged but do NOT block the sprint.
 
-8. **On pass — Score and commit:**
+8. **Adversary QA** (if `adversary.enabled: true`):
+   Spawn a **red-team subagent** to break the sprint's code. This gate runs AFTER
+   sensors pass, evaluating the same code the evaluator approved but with an
+   adversarial mindset. Provide the sub-agent ONLY:
+   - The sprint diff (`git diff` from before sprint start)
+   - The sprint contract
+   - The adversary `strategies` enabled in `harness.yaml` (default: `property-test`)
+   - An instruction to return JSON matching `AdversaryReport`
+
+   The adversary searches for:
+   - Property-based invariants that don't hold for all inputs
+   - Mutations that existing tests fail to catch
+   - Fault-injection paths the code doesn't handle
+   - Edge cases that break behavior
+
+   It returns:
+   ```json
+   {
+     "sprintId": 1,
+     "startedAt": "...",
+     "completedAt": "...",
+     "strategies": ["property-test"],
+     "findings": [
+       { "strategy": "property-test", "severity": "high", "title": "...", "reproduction": "...", "affectedFile": "..." }
+     ],
+     "resilienceScore": 70,
+     "verdict": "fragile"
+   }
+   ```
+
+   **Gate behavior:**
+   - If `verdict: "broken"` OR any finding has `severity >= adversary.fail_on_severity`:
+     - Sprint FAILS. The findings become fix instructions.
+     - Attempt 1: Fix findings using adversary feedback, re-run sensors, re-run adversary.
+     - Attempt 2: Fix with broader context.
+     - Attempt 3: Log blocker, halt.
+   - If `verdict: "robust"` or `"fragile"` with no findings exceeding threshold:
+     - Sprint proceeds. The `resilienceScore` **overwrites** `evaluator_scores.resilience`
+       — the honest score from the adversary replaces the self-assessed value.
+     - Attach the full `AdversaryReport` to the sprint in `state.json` for future learning.
+
+9. **On pass — Score and commit:**
    - Final score = average of evaluator's criterion scores (NOT self-assessed).
    - If evaluator is disabled, **self-assess** using the same 6 criteria:
      - Re-read the sprint contract and diff. For each criterion:
@@ -820,7 +1077,7 @@ For each task:
      `.specs/features/{feature}/spec.md`, not in git history.
      Type prefixes: `feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `perf` / `build` / `ci`.
 
-9. **Update artifacts:**
+10. **Update artifacts:**
    - `tasks.md` — check `- [x]` boxes on completed items, bump `Progress: N/total`
    - `state.json` — record sprint result:
      ```json
@@ -830,14 +1087,18 @@ For each task:
        "status": "done",
        "contract": "{what was agreed}",
        "score": 84,
-       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80, "security": 78, "resilience": 72 },
+       "evaluator_scores": { "correctness": 92, "completeness": 88, "code_quality": 85, "test_coverage": 80, "security": 78, "resilience": 70 },
        "requirements": ["REQ-01", "REQ-01.1"],
        "commit": "abc123f",
-       "cost": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0 }
+       "cost": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0 },
+       "adversary": { "strategies": ["property-test"], "findings": [], "resilienceScore": 70, "verdict": "robust" }
      }
      ```
+     (Note: if `adversary.enabled: true`, the `resilience` score comes from the adversary's
+     `resilienceScore` and the full report is persisted under `adversary`. If disabled, `adversary`
+     is omitted.)
 
-10. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
+11. **Next task** — Immediately proceed. Do NOT ask the user to confirm.
     Fresh context: re-read only files relevant to the next task.
     For heavy research or parallelizable independent tasks, consider
     [Sub-Agent Delegation](#sub-agent-delegation).
@@ -955,6 +1216,229 @@ gh pr create \
 Log the PR/MR URL to `state.json → activity[]` as `type: "pr_opened"`.
 
 That is the entire output. No "I hope this helps." No "Let me know if you have questions."
+
+---
+
+## adp mobile run [feature]
+
+Mobile-specific pipeline execution for iOS, Android, Flutter, and React Native projects. Follows the same phases as standard ADP but with mobile-specific sensors, evaluator criteria, and implementation patterns.
+
+**Platform detection:** The command automatically detects the mobile platform from the `.adp/state.json → platform` field set during `adp mobile init`.
+
+### Step 0: Load Mobile Context
+
+1. Read `.adp/state.json` with platform context (`platform: "ios" | "android" | "flutter" | "react-native"`)
+2. Auto-generate `.specs/project/PROJECT.md` for mobile (see [Project-Level Spec Auto-Generation](#project-level-spec-auto-generation))
+3. Load mobile guides (`.adp/guides/mobile/`) — platform-specific architecture, conventions, testing
+4. Create mobile feature branch: `feat/mobile-{feature-slug}`
+5. Record platform in `state.json → platform`
+
+### Step 1: Auto-Size Mobile Complexity
+
+| Scope | Criteria | Phases |
+|-------|----------|--------|
+| **Small** | Single screen, ≤3 files, no new libs, standard UI | Quick mode |
+| **Medium** | Multi-screen feature, <8 tasks, standard navigation | Specify → Execute |
+| **Large** | New feature module, 8+ tasks, custom animations | All phases |
+| **Complex** | Platform integrations, custom shaders, complex state | All + platform testing |
+
+### Step 2: SPECIFY (Mobile Requirements)
+
+**Load mobile guides:** `mobile-conventions.md`, `ios-architecture.md` OR `android-architecture.md`, `PROJECT.md`
+
+**Mobile REQ patterns:**
+
+```markdown
+### ⭐ REQ-01: {Feature} main screen [MVP]
+**User Story:** As a user, I want to view {feature content}, so that I can {benefit}.
+
+| ID | Acceptance Criteria |
+|----|---------------------|
+| REQ-01.1 | WHEN screen loads THEN show loading state |
+| REQ-01.2 | WHEN data loads successfully THEN display {content} |
+| REQ-01.3 | WHEN user taps {item} THEN navigate to detail |
+| REQ-01.4 | WHEN network fails THEN show error with retry |
+| REQ-01.5 | WHEN user pulls to refresh THEN reload data |
+| REQ-01.6 | WHEN device rotates THEN layout adapts |
+| REQ-01.7 | WHEN Reduce Motion enabled THEN skip animations |
+```
+
+### Step 3: DESIGN (Mobile Architecture)
+
+**Load mobile guides:** `ios-architecture.md` OR `android-architecture.md`, `mobile-integrations.md`
+
+**Mobile architecture patterns:**
+
+**iOS Architecture:**
+- Feature-based structure (three-file pattern for TCA, MVVM for SwiftUI)
+- SwiftUI/UIKit integration patterns
+- Navigation patterns (NavigationStack, custom transitions)
+- Platform-specific UI components
+
+**Android Architecture:**
+- MVVM architecture with ViewModels
+- Jetpack Compose UI patterns
+- StateFlow/Flow for reactive state
+- Material Design 3 components
+
+**Cross-Platform:**
+- Framework-specific architecture (Flutter widgets, React Native components)
+- Platform abstraction layers
+- Shared business logic
+
+### Step 4: TASKS (Mobile Implementation)
+
+**Mobile task patterns:**
+
+```markdown
+## TASK-01: {Feature} screen scaffold
+- [ ] **Requirement:** REQ-01
+- [ ] **Files:** app/src/main/java/com/app/features/{Feature}Activity.kt
+- [ ] **UI Pattern:** Jetpack Compose with Material 3
+- [ ] **Done when:** Screen renders with loading state
+- [ ] **Test:** UI test verifies screen elements
+
+## TASK-02: {Feature} state management
+- [ ] **Requirement:** REQ-02
+- [ ] **Files:** {Feature}ViewModel.kt, {Feature}State.kt
+- [ ] **State Pattern:** StateFlow for UI state, sealed class for states
+- [ ] **Done when:** State updates trigger UI re-composition
+- [ ] **Test:** Unit test verifies state transitions
+```
+
+### Step 5: EXECUTE (Mobile Sprint Mode)
+
+**Mobile sensors** (from `.adp/harness.yaml`):
+
+**iOS sensors:**
+- `compile: tuist build --target {APP_NAME}`
+- `swiftlint: swiftlint lint --strict`
+- `test: tuist test --test-targets {TEST_TARGETS}`
+- `metal: python Scripts/validate_metal.py` (if shaders present)
+- `snapshot: fastlane snapshot` (optional)
+
+**Android sensors:**
+- `compile: ./gradlew assembleDebug`
+- `detekt: ./gradlew detekt`
+- `test: ./gradlew test`
+- `android_test: ./gradlew connectedAndroidTest`
+- `lint: ./gradlew lint`
+
+**Flutter sensors:**
+- `analyze: flutter analyze`
+- `test: flutter test`
+- `build: flutter build apk`
+- `ios_build: flutter build ios`
+
+**React Native sensors:**
+- `compile: npm run android`
+- `ios_compile: npm run ios`
+- `test: npm test`
+- `lint: npm run lint`
+
+**Mobile evaluator criteria:**
+
+```yaml
+evaluator:
+  enabled: true
+  timing: per_sprint
+  criteria:
+    correctness: 90      # Feature works as specified
+    completeness: 85    # All acceptance criteria met
+    code_quality: 85    # Clean code, follows platform conventions
+    test_coverage: 90   # Unit + UI tests
+    mobile_ui: 88       # Platform UI patterns, navigation, lifecycle
+    performance: 82     # 60fps animations, no main thread blocking
+    security: 85        # No secrets, secure storage
+    accessibility: 80   # Dynamic Type, Reduce Motion, screen readers
+```
+
+**Mobile sprint contract example:**
+
+```markdown
+# Sprint 2: TASK-02 {Feature} state management
+
+## What I'll build
+ViewModel with StateFlow for {feature} screen, sealed class state pattern
+
+## Files to touch
+- `app/src/main/java/com/app/features/{feature}/{Feature}ViewModel.kt` — new
+- `app/src/main/java/com/app/features/{feature}/{Feature}State.kt` — new
+- `app/src/main/java/com/app/features/{feature}/{Feature}Screen.kt` — modify
+
+## State Pattern
+- Loading, Success, Error sealed classes
+- StateFlow<State> for UI observation
+- CoroutineScope for async operations
+
+## Acceptance criteria
+- [ ] WHEN ViewModel initializes THEN state is Loading
+- [ ] WHEN data loads successfully THEN state is Success(data)
+- [ ] WHEN network fails THEN state is Error(message)
+- [ ] WHEN screen rotates THEN state is preserved
+- [ ] WHEN user navigates away THEN coroutines cancel
+
+## Verification
+- Sensor: compile passes (./gradlew assembleDebug)
+- Sensor: detekt passes (no warnings)
+- Sensor: test passes (unit tests for state transitions)
+- Manual: Test on device with rotation and network off
+
+## Requirements traced
+REQ-02.1, REQ-02.2, REQ-02.3
+```
+
+### Step 6: VALIDATE (Feature-Level UAT)
+
+After all tasks `done`:
+
+1. **Score safety net** — Check `state.json` for unscored sprints
+2. **Requirement coverage check** — All REQs have passing tasks
+3. **Full mobile sensor suite** — Run all platform sensors end-to-end
+4. **Mobile evaluator final pass** — Full feature evaluation with mobile criteria
+5. **Mobile-specific checks:**
+   - **iOS:** 60fps animations, no memory leaks, VoiceOver support
+   - **Android:** No ANRs, battery optimization, TalkBack support
+   - **Cross-platform:** Performance on both platforms, accessibility
+6. Update state: `status: "idle"`, `phase: null`
+
+### Step 7: Complete
+
+Output the mobile-specific final summary table:
+
+```
+ADP Mobile Complete: {feature} ({platform})
+══════════════════════════════════════════════════════
+ #   Task                       Score   REQs          Commit
+ 1   TASK-01 Screen setup       90/100  REQ-01        abc123f
+ 2   TASK-02 State management   88/100  REQ-02        def456g
+ 3   TASK-03 Navigation        91/100  REQ-03        789abcd
+──────────────────────────────────────────────────────
+ Avg score: 89/100   REQ coverage: 3/3 ✓   Sensors: all ✓
+
+Platform: {platform} | Mobile UI: ✓ | Performance: ✓ | Accessibility: ✓
+
+Specs: .specs/features/{feature}/
+Branch: feat/mobile-{feature-slug}
+```
+
+**Then push + open PR (Gated — ask once):**
+
+```bash
+git push -u origin feat/mobile-{feature-slug}
+gh pr create \
+  --title "{feature}: {one-line summary}" \
+  --body "## Summary
+- {bullet: what REQs were implemented}
+- {bullet: platform-specific implementation details}
+
+## Test plan
+- Mobile sensors: compile ✓ lint ✓ test ✓
+- Platform: {platform}
+- Manual testing: {device-specific steps}"
+```
+
+---
 
 ---
 

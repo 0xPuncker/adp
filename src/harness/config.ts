@@ -3,7 +3,23 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import YAML from "yaml";
-import type { HarnessConfig, EvaluatorConfig, SensorConfig, ActionConfig, ActionZone, AutonomyConfig, ClarifyMode, OutputMode } from "../types.js";
+import type { HarnessConfig, EvaluatorConfig, SensorConfig, ActionConfig, ActionZone, AutonomyConfig, ClarifyMode, OutputMode, AdversaryConfig, AdversaryStrategy, AdversarySeverity } from "../types.js";
+
+const execAsync = promisify(exec);
+
+/**
+ * Checks whether the `rtk` binary is available on PATH.
+ * Resolves false on any error so callers never need to catch.
+ */
+export async function detectRtk(): Promise<boolean> {
+  const cmd = process.platform === "win32" ? "where rtk" : "which rtk";
+  try {
+    await execAsync(cmd);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const execAsync = promisify(exec);
 
@@ -76,6 +92,17 @@ const DEFAULT_AUTONOMY: AutonomyConfig = {
   output: "minimal",
 };
 
+const VALID_STRATEGIES = new Set<AdversaryStrategy>(["property-test", "mutation", "fault-inject", "edge-fuzz"]);
+const VALID_SEVERITIES = new Set<AdversarySeverity>(["critical", "high", "medium", "low"]);
+
+const DEFAULT_ADVERSARY: AdversaryConfig = {
+  enabled: false,
+  strategies: ["property-test"],
+  timeout_ms: 180_000,
+  fail_on_severity: "high",
+  parallel: true,
+};
+
 const DEFAULT_CONFIG: HarnessConfig = {
   mode: "sprint",
   min_score: 85,
@@ -87,6 +114,7 @@ const DEFAULT_CONFIG: HarnessConfig = {
   evaluator: DEFAULT_EVALUATOR,
   actions: {},
   autonomy: DEFAULT_AUTONOMY,
+  adversary: DEFAULT_ADVERSARY,
 };
 
 /**
@@ -180,18 +208,65 @@ export async function loadHarnessConfig(cwd: string): Promise<HarnessConfig> {
       output: VALID_OUTPUT.has(autoCfg?.output) ? autoCfg.output : DEFAULT_AUTONOMY.output,
     };
 
+    // Linear integration validation
+    const linear_enabled = parsed?.linear_enabled === true;
+    if (linear_enabled && !process.env.LINEAR_API_KEY) {
+      throw new Error(
+        "[adp] linear_enabled is true but LINEAR_API_KEY is not set. " +
+        "Export LINEAR_API_KEY before running ADP, or run `adp linear off` to disable."
+      );
+    }
+
+    const advCfg = parsed?.adversary;
+    const adversary: AdversaryConfig = normalizeAdversary(advCfg);
+
     return {
       mode: parsed?.mode ?? "sprint",
       min_score: parsed?.min_score ?? 80,
       rtk_enabled: parsed?.rtk_enabled === true,
+      linear_enabled,
+      linear_team_id: typeof parsed?.linear_team_id === "string" ? parsed.linear_team_id : undefined,
       sensors: {
         execute: { computational: sensors },
       },
       evaluator,
       actions,
       autonomy,
+      adversary,
     };
-  } catch {
+  } catch (err) {
+    // Re-throw validation errors (e.g. missing LINEAR_API_KEY) so callers see them.
+    // Swallow only file-not-found / parse errors, falling back to defaults.
+    if (err instanceof Error && err.message.startsWith("[adp]")) throw err;
     return DEFAULT_CONFIG;
   }
+}
+
+function normalizeAdversary(raw: unknown): AdversaryConfig {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_ADVERSARY };
+  const cfg = raw as Record<string, unknown>;
+
+  const rawStrategies = Array.isArray(cfg.strategies) ? cfg.strategies : DEFAULT_ADVERSARY.strategies;
+  const filtered: AdversaryStrategy[] = [];
+  for (const s of rawStrategies) {
+    if (typeof s === "string" && VALID_STRATEGIES.has(s as AdversaryStrategy)) {
+      filtered.push(s as AdversaryStrategy);
+    } else {
+      console.warn(`[adp] adversary strategy "${String(s)}" is not recognized — skipping`);
+    }
+  }
+  const strategies = filtered.length > 0 ? filtered : [...DEFAULT_ADVERSARY.strategies];
+
+  const failRaw = typeof cfg.fail_on_severity === "string" ? cfg.fail_on_severity : DEFAULT_ADVERSARY.fail_on_severity;
+  const fail_on_severity: AdversarySeverity = VALID_SEVERITIES.has(failRaw as AdversarySeverity)
+    ? (failRaw as AdversarySeverity)
+    : DEFAULT_ADVERSARY.fail_on_severity;
+
+  return {
+    enabled: cfg.enabled === true,
+    strategies,
+    timeout_ms: typeof cfg.timeout_ms === "number" && cfg.timeout_ms > 0 ? cfg.timeout_ms : DEFAULT_ADVERSARY.timeout_ms,
+    fail_on_severity,
+    parallel: cfg.parallel !== false,
+  };
 }

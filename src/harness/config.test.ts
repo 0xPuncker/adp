@@ -66,3 +66,75 @@ autonomy:
     expect(cfg.autonomy.output).toBe("minimal");
   });
 });
+
+describe("loadHarnessConfig — adversary", () => {
+  beforeEach(() => mkdir(join(TMP, ".adp"), { recursive: true }));
+  afterEach(() => rm(TMP, { recursive: true, force: true }));
+
+  it("defaults adversary to disabled with property-test strategy when section is absent (REQ-01.2)", async () => {
+    await writeHarness(`mode: sprint\nmin_score: 85\n`);
+    const cfg = await loadHarnessConfig(TMP);
+    expect(cfg.adversary.enabled).toBe(false);
+    expect(cfg.adversary.strategies).toEqual(["property-test"]);
+    expect(cfg.adversary.fail_on_severity).toBe("high");
+    expect(cfg.adversary.parallel).toBe(true);
+    expect(cfg.adversary.timeout_ms).toBe(180_000);
+  });
+
+  it("parses explicit adversary block (REQ-01.1)", async () => {
+    await writeHarness(`
+mode: sprint
+min_score: 85
+adversary:
+  enabled: true
+  strategies: [property-test]
+  timeout_ms: 60000
+  fail_on_severity: medium
+  parallel: false
+`);
+    const cfg = await loadHarnessConfig(TMP);
+    expect(cfg.adversary.enabled).toBe(true);
+    expect(cfg.adversary.timeout_ms).toBe(60_000);
+    expect(cfg.adversary.fail_on_severity).toBe("medium");
+    expect(cfg.adversary.parallel).toBe(false);
+  });
+
+  it("filters unknown strategies (REQ-01.3)", async () => {
+    await writeHarness(`
+mode: sprint
+adversary:
+  enabled: true
+  strategies: [property-test, sql-injection, mutation, made-up]
+`);
+    const cfg = await loadHarnessConfig(TMP);
+    expect(cfg.adversary.strategies).toEqual(["property-test", "mutation"]);
+  });
+
+  it("falls back to default strategies when all listed strategies are invalid", async () => {
+    await writeHarness(`
+mode: sprint
+adversary:
+  enabled: true
+  strategies: [made-up, also-fake]
+`);
+    const cfg = await loadHarnessConfig(TMP);
+    expect(cfg.adversary.strategies).toEqual(["property-test"]);
+  });
+
+  it("falls back fail_on_severity to 'high' when invalid (REQ-01.4)", async () => {
+    await writeHarness(`
+mode: sprint
+adversary:
+  enabled: true
+  fail_on_severity: catastrophic
+`);
+    const cfg = await loadHarnessConfig(TMP);
+    expect(cfg.adversary.fail_on_severity).toBe("high");
+  });
+
+  it("returns default adversary block when harness.yaml does not exist", async () => {
+    const cfg = await loadHarnessConfig(join(TMP, "nonexistent"));
+    expect(cfg.adversary.enabled).toBe(false);
+    expect(cfg.adversary.strategies).toEqual(["property-test"]);
+  });
+});

@@ -119,11 +119,11 @@ log "Step 1: Skill files → $TARGET"
 if [ -d "$TARGET" ]; then
   if [ -d "$TARGET/.git" ]; then
     if [ "$DRY_RUN" = "1" ]; then
-      log "[dry-run] Would run: git -C \"$TARGET\" fetch origin && git -C \"$TARGET\" reset --hard origin/$BRANCH"
+      log "[dry-run] Would run: git -C \"$TARGET\" fetch origin && git -C \"$TARGET\" reset --hard $BRANCH"
     else
-      log "Detected git clone at $TARGET — syncing to origin/$BRANCH..."
+      log "Detected git clone at $TARGET — syncing to $BRANCH..."
       git -C "$TARGET" fetch origin --quiet 2>&1 || fail "git fetch failed in $TARGET"
-      git -C "$TARGET" reset --hard "origin/$BRANCH" --quiet 2>&1 || fail "git reset failed in $TARGET"
+      git -C "$TARGET" reset --hard "$BRANCH" --quiet 2>&1 || fail "git reset failed in $TARGET"
       ok "Skill updated via git"
     fi
     # Skip the download steps below — git already synced everything.
@@ -184,7 +184,11 @@ else
       trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 
       log "Cloning repo..."
-      git clone --depth 1 --branch "$BRANCH" "https://github.com/$REPO.git" "$TMPDIR/adp" --quiet 2>&1 && ok "Cloned" || fail "Failed to clone"
+      # `-c advice.detachedHead=false` suppresses the "you are in 'detached HEAD' state"
+      # advisory that git emits when $BRANCH is a tag (e.g. v0.8.0 from the release-latest
+      # resolver above) — the clone is always one-shot, so the detached state is expected
+      # and the advisory just adds noise to `adp update` output. --quiet does not cover it.
+      git -c advice.detachedHead=false clone --depth 1 --branch "$BRANCH" "https://github.com/$REPO.git" "$TMPDIR/adp" --quiet 2>&1 && ok "Cloned" || fail "Failed to clone"
 
       log "Installing dependencies..."
       (cd "$TMPDIR/adp" && npm install --ignore-scripts --silent 2>&1) && ok "Dependencies" || fail "npm install failed"

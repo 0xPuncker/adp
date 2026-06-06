@@ -2,7 +2,8 @@ import { mkdir, copyFile, readdir, readFile, writeFile } from "node:fs/promises"
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
-import { platform } from "node:os";
+import { platform, homedir } from "node:os";
+import { spawn } from "node:child_process";
 
 export interface InitResult {
   hooksInstalled: string[];
@@ -94,9 +95,76 @@ async function registerHooksInSettings(
   return changed;
 }
 
+/** Gets the global gitignore path from git config or returns the default ~/.gitignore */
+async function getGlobalGitignorePath(): Promise<string> {
+  try {
+    const { stdout } = await spawnGit("config", "--global", "--get", "core.excludesFile");
+    const trimmed = stdout.trim();
+    if (trimmed) return trimmed;
+  } catch {
+    // git config fails or not set — use default
+  }
+  return join(homedir(), ".gitignore");
+}
+
+/** Spawns a git command and returns stdout */
+function spawnGit(...args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, { shell: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (data) => (stdout += data.toString()));
+    child.stderr?.on("data", (data) => (stderr += data.toString()));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error(`git ${args.join(" ")} exited with ${code}`));
+    });
+  });
+}
+
+/**
+ * Ensures ADP paths are in the global gitignore file.
+ * Creates the file if needed, sets git config if needed, and appends ADP entries if missing.
+ */
+async function setupGlobalGitignore(): Promise<void> {
+  const globalIgnorePath = await getGlobalGitignorePath();
+  const adpBlock = `# ADP — local pipeline state, feature specs, and skill artifacts (do not commit)
+.adp/
+.specs/
+.claude/skills/adp/`;
+
+  // Create global gitignore if it doesn't exist
+  if (!existsSync(globalIgnorePath)) {
+    await writeFile(globalIgnorePath, adpBlock + "\n", "utf-8");
+    // Set git config if it wasn't already set
+    try {
+      await spawnGit("config", "--global", "--get", "core.excludesFile");
+    } catch {
+      // Config not set — register it
+      const resolvedPath = globalIgnorePath.replace(/^~/, homedir());
+      await spawnGit("config", "--global", "core.excludesFile", resolvedPath);
+    }
+    return;
+  }
+
+  // File exists — check if ADP entries are already there
+  const content = await readFile(globalIgnorePath, "utf-8");
+  if (content.includes("# ADP — local pipeline state")) {
+    // Already managed by ADP — do nothing
+    return;
+  }
+
+  // Append ADP block if not present
+  await writeFile(globalIgnorePath, (content.trimEnd() + "\n" + adpBlock + "\n"), "utf-8");
+}
+
 export async function initProject(cwd: string, templatesDir?: string): Promise<InitResult> {
   const hooksInstalled: string[] = [];
   const agentsInstalled: string[] = [];
+
+  // Setup global gitignore first
+  await setupGlobalGitignore();
 
   const tplDir = templatesDir ?? defaultTemplatesDir();
   const claudeDir = resolve(cwd, ".claude");

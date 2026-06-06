@@ -17,6 +17,10 @@ export { startFeature } from "./features/manager.js";
 export type { FeatureStartResult } from "./features/manager.js";
 export { FeatureBranchManager, featureBranchName, slugifyFeature } from "./git/feature.js";
 export type { FeatureBranchAction, FeatureBranchResult } from "./git/feature.js";
+
+// ─── Adversary (red-team subagent gate) ─────────────────────────────
+export { AdversaryRunner, runAdversary } from "./adversary/runner.js";
+export { computeResilienceScore, deriveVerdict, SEVERITY_RANK, SEVERITY_WEIGHTS } from "./adversary/verdict.js";
 export { detectPlatform } from "./lifecycle/platform.js";
 export type { Platform, PlatformInfo } from "./lifecycle/platform.js";
 export { runUpdate } from "./lifecycle/update.js";
@@ -58,6 +62,10 @@ export type {
   AutonomyConfig,
   ClarifyMode,
   OutputMode,
+  AdversaryConfig,
+  AdversaryReport,
+  AdversaryFinding,
+  AdversaryStrategy,
 } from "./types.js";
 export type { SensorResult } from "./harness/engine.js";
 export type { EvaluatorPromptParams, ThresholdResult } from "./evaluator/engine.js";

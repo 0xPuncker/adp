@@ -223,6 +223,52 @@ describe("loadHarnessConfig — rtk_enabled", () => {
   });
 });
 
+describe("loadHarnessConfig — linear_enabled", () => {
+  it("parses linear_enabled: true and linear_team_id from yaml", async () => {
+    const dir = join(tmpdir(), `adp-linear-cfg-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(
+      join(dir, ".adp", "harness.yaml"),
+      "linear_enabled: true\nlinear_team_id: team-abc\n",
+    );
+    const origKey = process.env.LINEAR_API_KEY;
+    process.env.LINEAR_API_KEY = "test-key";
+    try {
+      const cfg = await loadHarnessConfig(dir);
+      expect(cfg.linear_enabled).toBe(true);
+      expect(cfg.linear_team_id).toBe("team-abc");
+    } finally {
+      if (origKey === undefined) delete process.env.LINEAR_API_KEY;
+      else process.env.LINEAR_API_KEY = origKey;
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it("defaults linear_enabled to false when absent", async () => {
+    const dir = join(tmpdir(), `adp-linear-cfg-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "mode: sprint\n");
+    const cfg = await loadHarnessConfig(dir);
+    expect(cfg.linear_enabled).toBe(false);
+    expect(cfg.linear_team_id).toBeUndefined();
+    await rm(dir, { recursive: true });
+  });
+
+  it("throws a descriptive error when linear_enabled: true but LINEAR_API_KEY is absent", async () => {
+    const dir = join(tmpdir(), `adp-linear-nokey-${Date.now()}`);
+    await mkdir(join(dir, ".adp"), { recursive: true });
+    await writeFile(join(dir, ".adp", "harness.yaml"), "linear_enabled: true\n");
+    const origKey = process.env.LINEAR_API_KEY;
+    delete process.env.LINEAR_API_KEY;
+    try {
+      await expect(loadHarnessConfig(dir)).rejects.toThrow("LINEAR_API_KEY");
+    } finally {
+      if (origKey !== undefined) process.env.LINEAR_API_KEY = origKey;
+      await rm(dir, { recursive: true });
+    }
+  });
+});
+
 describe("detectRtk", () => {
   it("resolves a boolean without throwing", async () => {
     const result = await detectRtk();
