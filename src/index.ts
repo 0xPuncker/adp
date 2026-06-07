@@ -5,6 +5,7 @@ export { ContextLoader } from "./context/loader.js";
 export { StateManager } from "./state/manager.js";
 export { DesignLoader } from "./design/loader.js";
 export { DesignExtractor } from "./design/extractor.js";
+export { DesignCatalog, parseDesignMd, getRecommendations } from "./design/catalog.js";
 export { TemplateCatalog } from "./templates/catalog.js";
 export type { WorkflowTemplate } from "./templates/catalog.js";
 export { parseTasks } from "./tasks/parser.js";
@@ -68,6 +69,7 @@ export type {
   AdversaryStrategy,
 } from "./types.js";
 export type { SensorResult } from "./harness/engine.js";
+export type { DesignEntry, DesignCategory } from "./design/catalog.js";
 export type { EvaluatorPromptParams, ThresholdResult } from "./evaluator/engine.js";
 
 // ─── Git Workflow Utilities ──────────────────────────────────────

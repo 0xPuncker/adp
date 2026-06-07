@@ -12,6 +12,8 @@ import { loadHarnessConfig } from "./harness/config.js";
 import { computeFinalScore, checkThresholds, meetsMinScore } from "./evaluator/engine.js";
 import { DesignLoader } from "./design/loader.js";
 import { DesignExtractor } from "./design/extractor.js";
+import { DesignCatalog, getRecommendations } from "./design/catalog.js";
+import type { DesignEntry } from "./design/catalog.js";
 import { TemplateCatalog } from "./templates/catalog.js";
 import { parseTasks } from "./tasks/parser.js";
 import { validateDag } from "./tasks/dag.js";
@@ -50,7 +52,7 @@ async function main(): Promise<void> {
       await showGuides();
       break;
     case "design":
-      await runDesign(args[0], args[1]);
+      await runDesign(args[0], args[1], args[2]);
       break;
     case "templates":
       await runTemplates(args[0], args[1], args[2]);
@@ -436,7 +438,10 @@ async function logMessage(message: string): Promise<void> {
 
 // ─── Design ─────────────────────────────────────────────────────
 
-async function runDesign(subcommand?: string, featureSlug?: string): Promise<void> {
+async function runDesign(subcommand?: string, arg1?: string, arg2?: string): Promise<void> {
+  const catalog = new DesignCatalog(cwd);
+  const loader = new DesignLoader(cwd);
+
   switch (subcommand) {
     case "extract": {
       console.log("\n  ADP Design — Extracting tokens & components...\n");
@@ -467,9 +472,8 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
       }
 
       // Save if feature slug provided
-      if (featureSlug) {
-        const loader = new DesignLoader(cwd);
-        const path = await loader.saveBundle(featureSlug, bundle);
+      if (arg1) {
+        const path = await loader.saveBundle(arg1, bundle);
         console.log(`\n  \x1b[32m✓\x1b[0m Saved to ${path}\n`);
       } else {
         console.log(`\n  \x1b[2mTip: adp design extract <feature-slug> to save as bundle\x1b[0m\n`);
@@ -478,17 +482,16 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
     }
 
     case "show": {
-      if (!featureSlug) {
+      if (!arg1) {
         console.log("  Usage: adp design show <feature-slug>");
         process.exitCode = 1;
         return;
       }
 
-      const loader = new DesignLoader(cwd);
-      const bundle = await loader.loadBundle(featureSlug);
+      const bundle = await loader.loadBundle(arg1);
       if (!bundle) {
-        console.log(`\n  No design bundle for "${featureSlug}".`);
-        console.log(`  Run: adp design extract ${featureSlug}\n`);
+        console.log(`\n  No design bundle for "${arg1}".`);
+        console.log(`  Run: adp design extract ${arg1}\n`);
         return;
       }
 
@@ -497,7 +500,7 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
     }
 
     case "intake": {
-      if (!featureSlug) {
+      if (!arg1) {
         console.log("  Usage: adp design intake <feature-slug>");
         console.log("  Reads a Claude Design handoff from stdin.");
         process.exitCode = 1;
@@ -517,10 +520,9 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
         return;
       }
 
-      const loader = new DesignLoader(cwd);
       const bundle = loader.parseHandoff(content);
 
-      const path = await loader.saveBundle(featureSlug, bundle);
+      const path = await loader.saveBundle(arg1, bundle);
       console.log(`\n  \x1b[32m✓\x1b[0m Parsed Claude Design handoff`);
       console.log(`  Tokens: ${Object.keys(bundle.tokens.colors).length} colors, ${Object.keys(bundle.tokens.spacing).length} spacing`);
       console.log(`  Components: ${bundle.components.length}`);
@@ -529,22 +531,21 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
     }
 
     case "run": {
-      if (!featureSlug) {
+      if (!arg1) {
         console.log("  Usage: adp design run <feature-slug>");
         console.log("  Checks for a design bundle, then starts the pipeline in design-first mode.");
         process.exitCode = 1;
         return;
       }
 
-      const loader = new DesignLoader(cwd);
-      let bundle = await loader.loadBundle(featureSlug);
+      let bundle = await loader.loadBundle(arg1);
 
       // If no bundle, try extracting from the project
       if (!bundle) {
         console.log("\n  No design bundle found. Extracting from project...\n");
         const extractor = new DesignExtractor(cwd);
         bundle = await extractor.extract();
-        await loader.saveBundle(featureSlug, bundle);
+        await loader.saveBundle(arg1, bundle);
       }
 
       const colorCount = Object.keys(bundle.tokens.colors).length;
@@ -555,7 +556,7 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
       const totalItems = screenCount + compCount;
 
       console.log("\n  \x1b[1m\x1b[35mADP Design-First Pipeline\x1b[0m\n");
-      console.log(`  Feature:    ${featureSlug}`);
+      console.log(`  Feature:    ${arg1}`);
       console.log(`  Source:     ${bundle.source}`);
       console.log(`  Tokens:     ${colorCount} colors, ${spacingCount} spacing`);
       if (bundle.tokens.typography.fontFamily) {
@@ -571,14 +572,14 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
 
       if (totalItems === 0) {
         console.log("\n  \x1b[33m⚠\x1b[0m No screens or components found. Use Claude Design to create a prototype first.");
-        console.log("  Then: cat handoff.md | adp design intake " + featureSlug + "\n");
+        console.log("  Then: cat handoff.md | adp design intake " + arg1 + "\n");
         return;
       }
 
       // Start the pipeline
       const state = new StateManager(cwd);
       const complexity = totalItems > 10 ? "complex" : totalItems > 5 ? "large" : "medium";
-      await state.startPipeline(featureSlug, complexity as "medium" | "large" | "complex");
+      await state.startPipeline(arg1, complexity as "medium" | "large" | "complex");
 
       console.log(`  Complexity: ${complexity} (${totalItems} screens/components)`);
       console.log("");
@@ -610,33 +611,169 @@ async function runDesign(subcommand?: string, featureSlug?: string): Promise<voi
 
       console.log("");
       console.log(`  \x1b[32m▶\x1b[0m Pipeline started in design-first mode.`);
-      console.log(`  \x1b[2mRun "adp run ${featureSlug}" in a Claude Code session to execute.\x1b[0m\n`);
+      console.log(`  \x1b[2mRun "adp run ${arg1}" in a Claude Code session to execute.\x1b[0m\n`);
+      break;
+    }
+
+    case "catalog": {
+      const designs = await catalog.list();
+
+      console.log("\n  ADP Design Catalog — 72+ production-grade designs\n");
+      console.log("  \x1b[1mCategories\x1b[0m");
+      const categories = new Map<string, DesignEntry[]>();
+      for (const d of designs) {
+        if (!categories.has(d.category)) categories.set(d.category, []);
+        categories.get(d.category)!.push(d);
+      }
+
+      for (const [cat, entries] of categories) {
+        const count = entries.length;
+        console.log(`  \x1b[36m${cat.padEnd(20)}\x1b[0m ${count} design${count !== 1 ? "s" : ""}`);
+      }
+
+      console.log(`\n  \x1b[2mTotal: ${designs.length} designs from getdesign.md\x1b[0m`);
+      console.log(`  \x1b[2mUsage: adp design search <query> | fetch <slug> | apply <slug> <feature>\x1b[0m\n`);
+      break;
+    }
+
+    case "search": {
+      if (!arg1) {
+        console.log("  Usage: adp design search <query>");
+        process.exitCode = 1;
+        return;
+      }
+
+      const results = await catalog.search(arg1);
+
+      console.log(`\n  ADP Design Catalog — Search: "${arg1}"\n`);
+      if (results.length === 0) {
+        console.log(`  No matches found.\n`);
+        return;
+      }
+
+      for (const d of results) {
+        console.log(`  \x1b[36m${d.name.padEnd(15)}\x1b[0m ${d.description.slice(0, 50)}...`);
+        console.log(`  \x1b[2m    ${d.url}\x1b[0m`);
+        console.log("");
+      }
+      break;
+    }
+
+    case "fetch": {
+      if (!arg1) {
+        console.log("  Usage: adp design fetch <slug>");
+        console.log("  Fetches a DESIGN.md from getdesign.md and prints to stdout.");
+        process.exitCode = 1;
+        return;
+      }
+
+      const content = await catalog.fetchDesign(arg1);
+      if (!content) {
+        console.log(`\n  Design "${arg1}" not found. Try: adp design search ${arg1}\n`);
+        process.exitCode = 1;
+        return;
+      }
+
+      console.log(content);
+      break;
+    }
+
+    case "recommend": {
+      const keywords = arg1 ? arg1.split(",").map((k) => k.trim()) : [];
+      if (keywords.length === 0) {
+        console.log("  Usage: adp design recommend <keyword1,keyword2,...>");
+        console.log("  Get design recommendations based on project keywords.");
+        process.exitCode = 1;
+        return;
+      }
+
+      const recs = getRecommendations(keywords);
+
+      console.log(`\n  ADP Design Recommendations — Keywords: ${keywords.join(", ")}\n`);
+      if (recs.length === 0) {
+        console.log(`  No recommendations for these keywords.\n`);
+        console.log(`  Try keywords: ai, saas, fintech, ecommerce, developer-tools\n`);
+        return;
+      }
+
+      for (const rec of recs) {
+        const design = await catalog.get(rec.slug);
+        if (design) {
+          console.log(`  \x1b[36m${design.name.padEnd(15)}\x1b[0m ${rec.reason}`);
+          console.log(`  \x1b[2m    → adp design fetch ${rec.slug}\x1b[0m`);
+        }
+      }
+      console.log("");
+      break;
+    }
+
+    case "apply": {
+      // adp design apply <slug> <feature-slug>
+      if (!arg1 || !arg2) {
+        console.log("  Usage: adp design apply <slug> <feature-slug>");
+        console.log("  Fetches a DESIGN.md and creates a design bundle for the feature.");
+        process.exitCode = 1;
+        return;
+      }
+
+      const content = await catalog.fetchDesign(arg1);
+      if (!content) {
+        console.log(`\n  Design "${arg1}" not found. Try: adp design search ${arg1}\n`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const bundle = loader.parseHandoff(content);
+      const path = await loader.saveBundle(arg2, bundle);
+
+      const colorCount = Object.keys(bundle.tokens.colors).length;
+      const spacingCount = Object.keys(bundle.tokens.spacing).length;
+      const compCount = bundle.components.length;
+      const screenCount = bundle.screens?.length ?? 0;
+
+      console.log(`\n  \x1b[32m✓\x1b[0m Applied design: ${arg1} → ${arg2}`);
+      console.log(`  Tokens: ${colorCount} colors, ${spacingCount} spacing`);
+      console.log(`  Components: ${compCount}, Screens: ${screenCount}`);
+      console.log(`  Saved to: ${path}\n`);
       break;
     }
 
     default:
       console.log(`
-  ADP Design — Extract and manage design tokens & components
+  ADP Design — Design tokens, components, and inspiration catalog
 
   Subcommands:
-    extract [feature]     Extract tokens + components from project files
-                          (Tailwind, shadcn, CSS variables, component dirs)
-    show <feature>        Display the design bundle for a feature
-    intake <feature>      Parse a Claude Design handoff from stdin
-    run <feature>         Start design-first pipeline (bundle → specify → execute)
+    catalog                         List all 72+ designs from getdesign.md
+    search <query>                  Search designs by name, category, or keyword
+    fetch <slug>                    Fetch a DESIGN.md content to stdout
+    recommend <keywords>            Get recommendations (ai, saas, fintech, ...)
+    apply <slug> <feature>          Fetch and save as design bundle for a feature
+    extract [feature]               Extract tokens + components from project
+    show <feature>                  Display the design bundle for a feature
+    intake <feature>                Parse a Claude Design handoff from stdin
+    run <feature>                   Start design-first pipeline from bundle
 
-  Usage:
-    adp design extract                    # Show extracted tokens (dry run)
-    adp design extract auth               # Extract & save for "auth" feature
-    adp design show auth                  # Display saved bundle
+  Catalog Usage:
+    adp design catalog               # List all available designs
+    adp design search stripe         # Search by name/category
+    adp design recommend ai,saas     # Get recommendations for keywords
+    adp design fetch linear          # Fetch DESIGN.md to stdout
+    adp design apply vercel my-app   # Fetch & save as design bundle
+
+  Bundle Usage:
+    adp design extract               # Show extracted tokens (dry run)
+    adp design extract auth          # Extract & save for "auth" feature
+    adp design show auth              # Display saved bundle
     cat handoff.md | adp design intake auth  # Import Claude Design handoff
-    adp design run auth                   # Start pipeline from design bundle
+    adp design run auth              # Start pipeline from design bundle
 
   Workflow:
-    1. Design in Claude Design (claude.ai)
-    2. Export handoff → cat handoff.md | adp design intake my-feature
-    3. adp design run my-feature (or "adp run my-feature" in Claude Code)
-    4. ADP generates spec from components, creates tasks, builds each one
+    1. Browse: adp design catalog → adp design search <topic>
+    2. Fetch:  adp design fetch <slug> (preview) or adp design apply <slug> <feature>
+    3. Run:    adp design run <feature> (or "adp run <feature>" in Claude Code)
+    4. ADP generates spec from design, creates tasks, builds each one
+
+  Source: https://getdesign.md — 72+ production-grade DESIGN.md analyses
 `);
   }
 }
