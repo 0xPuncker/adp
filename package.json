@@ -1,6 +1,6 @@
 {
   "name": "adp",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "ADP — Autonomous Development Pipeline: spec-to-code sprints with feedback control",
   "type": "module",
   "engines": {
