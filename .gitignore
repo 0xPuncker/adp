@@ -10,7 +10,7 @@ pnpm-lock.yaml
 # ADP
 .adp/
 .specs/
-.claude/skills/adp/
+.claude/
 
 # Local-only screenshots and dev scratch
 screenshots/
