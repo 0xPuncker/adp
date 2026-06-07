@@ -23,22 +23,20 @@
   <a href="#architecture">Architecture</a>
 </p>
 
-ADP is a Claude Code **skill** that turns a spec file into shipped, committed code
-through four adaptive phases — **Specify → Design → Tasks → Execute** — with
-feedforward guides (generated from your codebase) and feedback sensors (lint,
-typecheck, test) enforced at every boundary.
-
-- **Skill layer** (`SKILL.md`) — methodology the agent follows.
-- **Runtime layer** (`src/`) — TypeScript helpers for loading guides, running
-  sensors, and persisting pipeline state.
-
-> Built on **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** (four-phase methodology)
-> and **[Karpathy's agent coding skills](https://github.com/forrestchang/andrej-karpathy-skills)** (execution discipline).
-> ADP adds a computational harness — live sensors, sprint scoring, stuck detection, and a feature-branch → PR workflow.
-
 ---
 
-## At a Glance
+## Overview
+
+ADP is a Claude Code **skill** that turns a spec file into shipped, committed code through four adaptive phases — **Specify → Design → Tasks → Execute** — with feedforward guides (generated from your codebase) and feedback sensors (lint, typecheck, test) enforced at every boundary.
+
+### Two Layers
+
+| Layer | Purpose | Location |
+|-------|---------|----------|
+| **Skill** | Methodology the agent follows | `SKILL.md` |
+| **Runtime** | TypeScript helpers for loading guides, running sensors, persisting state | `src/` |
+
+### Key Capabilities
 
 | Capability | What ADP adds |
 |------------|---------------|
@@ -52,132 +50,15 @@ typecheck, test) enforced at every boundary.
 
 ## Table of Contents
 
-1. [At a Glance](#at-a-glance)
+1. [Quick Start](#quick-start)
 2. [Install](#install)
-3. [Quick Start](#quick-start)
+3. [Commands](#commands)
 4. [Methodology](#methodology)
 5. [Directory Layout](#directory-layout)
-6. [Commands](#commands)
-7. [Architecture](#architecture)
-8. [Templates](#templates)
-9. [Development](#development)
-10. [Influences](#influences)
-
----
-
-## Install
-
-Install once per machine. The installer copies skill files to `~/.claude/skills/adp/`
-**and** installs the `adp` CLI globally via npm. Claude Code picks up the skill
-automatically in every project.
-
-### macOS / Linux / Git Bash / WSL
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
-```
-
-### Windows (native PowerShell)
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.ps1 | iex
-```
-
-> **PowerShell execution policy:** if `iex` is blocked, run with
-> `Set-ExecutionPolicy -Scope Process Bypass` first, or invoke via
-> `powershell -ExecutionPolicy Bypass -Command "iwr ... | iex"`.
-
-### Skill only (no CLI)
-
-If you don't have Node 22+ and only want the skill methodology files:
-
-```bash
-ADP_SKILL_ONLY=1 curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
-```
-
-PowerShell:
-
-```powershell
-$env:ADP_SKILL_ONLY = "1"
-iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.ps1 | iex
-```
-
-### Standalone binary (no Node required)
-
-If Node 22+ isn't available, build a standalone `adp` binary from a checkout:
-
-```bash
-git clone https://github.com/0xPuncker/adp.git
-cd adp && npm install && npm run build
-npm run build:standalone        # produces dist/adp-<plat>-<arch>[.exe]
-```
-
-> The standalone binary excludes the TUI (`adp tui` / `adp-i`). All other
-> commands work normally.
-
-### Update
-
-To upgrade an existing install:
-
-```bash
-adp update                      # main branch
-adp update --branch feat/foo    # specific branch
-```
-
-This re-runs the platform-appropriate installer. The `adp` command picks
-PowerShell on native Windows, bash everywhere else.
-
-### Uninstall
-
-To remove ADP completely:
-
-```bash
-adp uninstall                   # confirms before removing
-adp uninstall -y                # skip confirmation
-```
-
-Removes:
-- `~/.claude/skills/adp/` — skill files and templates
-- The global `adp` CLI (via `npm uninstall -g adp`)
-- Any standalone binary at `~/.claude/skills/adp/bin/adp[.exe]`
-
-### Verify
-
-```bash
-ls ~/.claude/skills/adp/SKILL.md && echo "ok"
-```
-
-Then open Claude Code in any project and say `adp init`.
-
-### Installer overrides
-
-Both installers honour these environment variables:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `CLAUDE_SKILLS_DIR` | `~/.claude/skills` | Alternate skills root |
-| `ADP_BRANCH` | `main` | Branch, tag, or commit to install |
-| `ADP_FORCE` | `0` | `1` overwrites existing install without prompting |
-| `ADP_SKILL_ONLY` | `0` | `1` installs skill files only, skips CLI |
-| `ADP_DRY_RUN` | `0` | `1` prints actions without executing |
-
-### Requirements
-
-- `git` and `curl` on `PATH` (for shell installer); `git` and `iwr` (PowerShell)
-- Node.js ≥ 22 + `npm` (for CLI install — skill-only mode skips this)
-- Claude Code with skill support (for the skill side)
-
-### Developing against a local checkout
-
-```bash
-git clone https://github.com/0xPuncker/adp.git
-cd adp
-npm install
-npm run build
-
-# Symlink your local copy into Claude Code's skills dir:
-ln -s "$(pwd)" ~/.claude/skills/adp
-```
+6. [Architecture](#architecture)
+7. [Templates](#templates)
+8. [Development](#development)
+9. [References](#references)
 
 ---
 
@@ -201,9 +82,130 @@ State persists between sessions. Stop with `adp pause`, continue with `adp resum
 
 ---
 
+## Install
+
+### One-line Install
+
+Install once per machine. The installer copies skill files to `~/.claude/skills/adp/` and installs the `adp` CLI globally.
+
+**macOS / Linux / Git Bash / WSL:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.ps1 | iex
+```
+
+> If `iex` is blocked by execution policy, run:
+> `powershell -ExecutionPolicy Bypass -Command "iwr ... | iex"`
+
+### Install Options
+
+| Option | Purpose |
+|--------|---------|
+| `ADP_SKILL_ONLY=1` | Install skill files only, skip CLI (no Node required) |
+| `ADP_BRANCH=main` | Install specific branch/tag/commit |
+| `ADP_FORCE=1` | Overwrite existing install without prompting |
+| `ADP_DRY_RUN=1` | Print actions without executing |
+
+**Skill-only mode (no CLI):**
+```bash
+ADP_SKILL_ONLY=1 curl -fsSL https://raw.githubusercontent.com/0xPuncker/adp/main/bin/install.sh | bash
+```
+
+**Standalone binary (no Node required):**
+```bash
+git clone https://github.com/0xPuncker/adp.git
+cd adp && npm install && npm run build:standalone
+```
+
+### Update & Uninstall
+
+```bash
+adp update                    # Upgrade to latest
+adp update --branch feat/foo  # Install specific branch
+adp uninstall                # Remove ADP completely
+```
+
+### Verify Installation
+
+```bash
+ls ~/.claude/skills/adp/SKILL.md && echo "✓ ADP installed"
+```
+
+### Requirements
+
+- `git` and `curl` (or PowerShell `iwr` on Windows)
+- Node.js ≥ 22 + `npm` (for CLI; skill-only mode skips this)
+- Claude Code with skill support
+
+---
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `adp init` | Detect stack, create `.adp/` + `.specs/`, write harness.yaml, run `adp map` |
+| `adp map` | Analyze codebase, generate feedforward guides |
+| `adp feature <request>` | Create feature dir, seed spec.md, start Specify phase |
+| `adp run <feature>` | Execute full pipeline: Specify → Design → Tasks → Execute → Validate |
+| `adp auto-mode <feature>` | Maximum-autonomy variant with adaptive retry and gated PR |
+| `adp status` | Show current sprint, phase, recent activity |
+| `adp verify` | Run all sensors; report pass/fail |
+| `adp pause` | Snapshot to HANDOFF.md; stop gracefully |
+| `adp resume` | Read handoff + state; continue from stopping point |
+| `adp tui` | Open live dashboard (sprints, activity, live agents) |
+| `adp completions <shell>` | Print shell completion script |
+
+### Live TUI
+
+`adp tui` includes a **Live Agents** panel that tails sub-agent JSONL files in real time:
+
+| Terminal Width | Display |
+|----------------|---------|
+| ≥120 cols | Three-column dashboard (sprints \| activity \| live) |
+| 90–119 cols | Live panel hidden; press `4` or `/live` to focus |
+| <90 cols | Live panel hidden entirely |
+
+Each sub-agent is classified, scored against your harness thresholds, and rendered with elapsed time.
+
+### Auto-mode
+
+`adp auto-mode <feature>` is the unattended variant:
+
+- Detects stack and installs matching reference harness
+- Overrides `autonomy.clarify=never` and `output=minimal`
+- Applies adaptive 3-attempt retry on sensor/evaluator failures
+- Gated push/PR at the end (one-click approval)
+
+**Halt conditions:**
+1. Sensor fails 3 adaptive attempts on same task
+2. Gated action is denied
+3. Git conflict cannot be auto-resolved
+4. Evaluator scores below `min_score` after fix-up
+
+Auto-mode does not bypass commit-msg hooks, force-push, or merge PRs.
+
+### Shell Completions
+
+```bash
+# bash
+adp completions bash > /usr/local/etc/bash_completion.d/adp
+
+# zsh
+adp completions zsh > "${fpath[1]}/_adp"
+
+# fish
+adp completions fish > ~/.config/fish/completions/adp.fish
+```
+
+---
+
 ## Methodology
 
-### The Four Phases
+### Four Phases
 
 ```mermaid
 flowchart LR
@@ -221,8 +223,6 @@ flowchart LR
     validate --> done([shipped])
 ```
 
-Phases auto-size to the scope of the work:
-
 | Scope | Criteria | Phases |
 |-------|----------|--------|
 | **Small** | ≤3 files, ≤1h, no new deps | Quick Mode only |
@@ -230,36 +230,28 @@ Phases auto-size to the scope of the work:
 | **Large** | Multi-component, 10+ tasks | All phases |
 | **Complex** | Ambiguous / new domain | All + gray-area discussion + interactive UAT |
 
-### The ID Chain
-
-Every piece of work is traceable end-to-end:
+### ID Chain — End-to-End Traceability
 
 ```mermaid
 flowchart TD
-    req["<b>REQ-01.2</b> <i>spec.md</i><br/>WHEN invalid email THEN 422"]
-    task["<b>TASK-05</b> <i>tasks.md</i><br/>Requirement: REQ-01.2<br/>Files: src/routes/auth.ts"]
-    sprint["<b>Sprint</b> <i>execution</i><br/>contract → build → sensors → score"]
-    commit["<b>commit</b><br/>feat(auth): validate email format<br/>SHA recorded in state.json"]
-    val["<b>validation.md</b><br/>REQ-01.2 ✓ covered by TASK-05"]
+    req["REQ-01.2<br/>spec.md<br/>WHEN invalid email THEN 422"]
+    task["TASK-05<br/>tasks.md<br/>Requirement: REQ-01.2<br/>Files: src/routes/auth.ts"]
+    sprint["Sprint<br/>execution<br/>contract → build → sensors → score"]
+    commit["commit<br/>feat(auth): validate email format<br/>SHA recorded in state.json"]
+    val["validation.md<br/>REQ-01.2 ✓ covered by TASK-05"]
     req --> task --> sprint --> commit --> val
 ```
 
-Break the chain = validation failure.
+**Break the chain = validation failure.**
 
 ### The Harness
 
 Two layers protect every task:
 
-- **Feedforward — guides** (`.adp/guides/*.md`) are generated by `adp map` from
-  your codebase. They are injected into context before each phase so the agent
-  sees *this* project's conventions, not a generic model prior.
-- **Feedback — sensors** (`.adp/harness.yaml`) are real shell commands
-  (typecheck, lint, test) run after every build. No commit until they pass.
-  3 failures on the same error ⇒ stuck detection ⇒ halt and ask the user.
+- **Feedforward — guides** (`.adp/guides/*.md`) are generated by `adp map` from your codebase. Injected before each phase so the agent sees *this* project's conventions.
+- **Feedback — sensors** (`.adp/harness.yaml`) are shell commands (typecheck, lint, test) run after every build. No commit until they pass.
 
-### The Sprint Lifecycle
-
-Every task inside Execute flows through the same gated loop:
+### Sprint Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -275,60 +267,25 @@ stateDiagram-v2
     Blocker --> [*]: halt + log STATE.md
 ```
 
-A failing sensor never auto-merges — the pipeline either retries, escalates,
-or halts and asks the user.
-
 ### Action Zones
 
-Autonomy is scoped to code, not infrastructure. Every shell command falls
-into one of three zones; the zone decides whether the agent may run it
-unprompted:
-
-```mermaid
-sequenceDiagram
-    participant A as Agent
-    participant U as You
-    participant S as Shell
-    Note over A: 🟢 Free — code + sensors + local git
-    A->>S: tsc --noEmit / eslint / vitest
-    S-->>A: pass/fail
-    A->>S: git add / git commit (local)
-
-    Note over A,U: 🟡 Gated — declared in harness.yaml actions:
-    A->>U: "run 'docker compose up -d postgres'?"
-    U-->>A: approve (once per session)
-    A->>S: docker compose up -d postgres
-
-    Note over A,U: 🔴 Always ask — destructive or externally visible
-    A->>U: "run 'flyctl deploy'?"
-    U-->>A: approve (every call)
-    A->>S: flyctl deploy
-```
-
-See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
-
-### Core Rules
-
-1. **Never fabricate.** Resolve facts via Knowledge Verification Chain:
-   codebase → project docs → Context7 MCP → web → *flag uncertain*.
-2. **Scope lock.** Touch only files listed in the current task. Out-of-scope
-   findings → `STATE.md → Deferred Ideas`.
-3. **Fresh context per task.** Re-read what the next task needs; drop history.
-4. **Conventional Commits 1.0.0** — no proprietary trailers; traceability via `state.json`.
-5. **Don't skip sensors.** Never disable a check to make it pass — fix the code.
-6. **Action zones.** Free for code, gated for infra, always-ask for destructive state.
+| Zone | Permissions | Examples |
+|------|-------------|----------|
+| 🟢 **Free** | Run unprompted | `tsc --noEmit`, `eslint`, `vitest`, local git |
+| 🟡 **Gated** | Ask once per session | `docker compose up`, infra commands |
+| 🔴 **Always Ask** | Ask every time | Deployments, destructive operations |
 
 ---
 
 ## Directory Layout
 
-### `.adp/` — runtime state and guides
+### `.adp/` — Runtime State
 
 ```
 .adp/
 ├── state.json        # Pipeline runtime state (machine-readable)
 ├── harness.yaml      # Sensor commands (typecheck / lint / test)
-└── guides/           # 7 feedforward guides, generated by `adp map`
+└── guides/           # Feedforward guides from `adp map`
     ├── stack.md
     ├── architecture.md
     ├── structure.md
@@ -338,11 +295,11 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
     └── concerns.md
 ```
 
-### `.specs/` — human-readable planning artifacts
+### `.specs/` — Planning Artifacts
 
 ```
 .specs/
-├── HANDOFF.md                     # created by `adp pause` — resume pointer
+├── HANDOFF.md                     # Pause/resume snapshot
 ├── project/
 │   ├── PROJECT.md                 # Vision, goals, constraints
 │   ├── ROADMAP.md                 # Milestones, features, status
@@ -350,7 +307,7 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
 ├── features/
 │   └── {feature-name}/
 │       ├── spec.md                # Requirements (REQ-NN with User Stories)
-│       ├── context.md             # Gray-area decisions (only if needed)
+│       ├── context.md             # Gray-area decisions (if needed)
 │       ├── design.md              # Architecture (Large/Complex only)
 │       ├── tasks.md               # Atomic tasks (Medium+ only)
 │       └── validation.md          # REQ coverage check after Execute
@@ -362,188 +319,67 @@ See `SKILL.md → Methodology Rules → Action Zones` for the full policy.
 
 ---
 
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `adp init` | Detect stack, create `.adp/` + `.specs/`, write `harness.yaml`, run `adp map` |
-| `adp map` | Analyze codebase, generate the 7 feedforward guides |
-| `adp feature <request>` | Create `feat/<slug>`, seed `.specs/features/<slug>/spec.md`, and start Specify |
-| `adp run <feature>` | Execute full pipeline for a feature |
-| `adp auto-mode <feature>` | Maximum-autonomy variant of `run` — runtime + e2e sensors, adaptive 3-attempt retry, gated push/PR at the end |
-| `adp status` | Show current sprint, phase, recent activity |
-| `adp verify` | Run all sensors; report pass/fail |
-| `adp pause` | Snapshot to `HANDOFF.md`; stop gracefully |
-| `adp resume` | Read handoff + state; continue from the exact stopping point |
-| `adp tui` | Open the live dashboard (sprint table, activity log, live agent panel) |
-| `adp completions <shell>` | Print bash / zsh / fish completion script to stdout |
-
-All commands are triggered in natural conversation with Claude Code — the agent
-reads `SKILL.md` and executes them using its built-in tools (Read, Write, Edit,
-Bash, Glob, Grep). There is no standalone CLI binary required.
-
-The optional runtime library (`src/`) is exported for programmatic use.
-
-### Live agent panel
-
-`adp tui` includes a **Live Agents** panel that tails the current Claude Code
-session's `subagents/` JSONL files in real time (~100ms latency via `chokidar`).
-Each sub-agent the orchestrator spawns — evaluator, contract reviewer, parallel
-worktree workers — is classified, scored against your `harness.yaml` thresholds,
-and rendered with elapsed time and prompt snippet.
-
-- Wide terminal (≥120 cols): three-column dashboard (sprints | activity | live).
-- Medium (90–119 cols): live panel hidden on the dashboard; press `4` or run
-  `/live` to focus the panel.
-- Narrow (<90 cols): live panel hidden entirely.
-
-If the active session JSONL can't be located, the panel renders a degraded
-banner and the rest of the dashboard keeps working.
-
-### Auto-mode
-
-`adp auto-mode <feature>` is the unattended variant of `adp run`. It detects
-the project stack (TypeScript / Python / Rust / Go), installs the matching
-reference harness from `templates/harness/auto-mode-<stack>.yaml` if missing,
-overrides `autonomy.clarify=never` and `output=minimal` for the duration of
-the run, and applies an adaptive 3-attempt retry policy on sensor and
-evaluator failures (re-diagnose, target the cause, re-run — instead of
-identical retries). Push and PR remain gated at the end of the run; the
-user clicks once.
-
-Halt conditions:
-
-1. A sensor fails 3 adaptive attempts on the same task.
-2. A gated action is denied.
-3. A git conflict cannot be auto-resolved.
-4. The evaluator scores below `min_score` after one fix-up sprint.
-
-Auto-mode does not bypass the commit-msg hook, force-push, merge PRs, or
-flip `always_ask` actions to auto-approve. Autonomy without a quality gate
-is just fast wrong code — if `evaluator.enabled: false`, auto-mode refuses
-to start.
-
-### Shell completions
-
-Tab-complete commands, subcommands, feature slugs from `.specs/features/`,
-template names from the installed skill, and flags. Install:
-
-```bash
-# bash
-adp completions bash > /usr/local/etc/bash_completion.d/adp
-
-# zsh
-adp completions zsh > "${fpath[1]}/_adp"
-
-# fish
-adp completions fish > ~/.config/fish/completions/adp.fish
-```
-
-See `completions/README.md` for per-shell install paths and reload notes.
-
----
-
 ## Architecture
 
 ```
 adp/
-├── SKILL.md                       # Methodology the agent follows
-├── README.md                      # You are here
+├── SKILL.md                       # Agent methodology
+├── README.md                      # This file
 ├── templates/
-│   ├── SPEC.md                    # Copy into .specs/features/{name}/spec.md
+│   ├── SPEC.md                    # Feature spec template
 │   ├── harness/                   # Reference harness.yaml per stack
-│   │   ├── auto-mode-typescript.yaml
-│   │   ├── auto-mode-python.yaml
-│   │   ├── auto-mode-rust.yaml
-│   │   └── auto-mode-go.yaml
-│   ├── hooks/                     # git hooks (commit-msg enforcer)
-│   └── agents/                    # evaluator / contract-reviewer / worktree
-├── completions/                   # bash / zsh / fish shell completions
+│   ├── hooks/                     # Git hooks (commit-msg enforcer)
+│   └── agents/                    # Evaluator / contract-reviewer / worktree
+├── completions/                   # Shell completions
 ├── src/
 │   ├── index.ts                   # Public exports
-│   ├── types.ts                   # Domain types (Sprint, Activity, PipelineState…)
-│   ├── cli.ts                     # CLI entry (adp sensors / status / guides…)
-│   ├── interactive.ts             # Interactive REPL
-│   ├── ui/                        # Ink/React status TUI
-│   ├── harness/
-│   │   ├── engine.ts              # Runs sensor commands, reports pass/fail
-│   │   ├── config.ts              # Loads .adp/harness.yaml
-│   │   └── engine.test.ts
-│   ├── context/
-│   │   └── loader.ts              # Loads guides + specs from .adp/ and .specs/
-│   └── state/
-│       ├── manager.ts             # Reads/writes .adp/state.json
-│       └── manager.test.ts
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
+│   ├── types.ts                   # Domain types
+│   ├── cli.ts                     # CLI entry
+│   ├── ui/                        # Ink/React TUI
+│   ├── harness/                   # Sensor execution
+│   ├── context/                   # Guide/spec loading
+│   └── state/                     # State management
+└── tests/                         # Vitest tests
 ```
 
-### Module responsibilities
+### Module Responsibilities
 
-- **`harness/`** executes sensors. `engine.ts` spawns the shell commands listed
-  in `harness.yaml` in configured `order`, captures stdout/stderr/exit code,
-  and returns a structured result the agent can act on.
-- **`context/loader.ts`** reads `.adp/guides/` and `.specs/` into an object
-  the agent can pass to a sub-agent — enabling targeted context-injection
-  instead of loading the whole project.
-- **`state/manager.ts`** owns `.adp/state.json` — sprint lifecycle, activity
-  log, blockers. All writes go through it for consistency.
-
-### Skill vs. Runtime
-
-| Layer | Tells agent | Executes | File |
-|-------|-------------|----------|------|
-| **Skill** | *what* to do | agent itself (Read/Write/Bash/…) | `SKILL.md` |
-| **Runtime** | *how* to do it reliably | Node process | `src/*.ts` |
-
-The skill is authoritative. The runtime is a convenience.
+| Module | Purpose |
+|--------|---------|
+| `harness/` | Executes sensors, captures results |
+| `context/loader.ts` | Loads guides + specs for targeted context injection |
+| `state/manager.ts` | Owns `.adp/state.json` — sprint lifecycle, activity log |
 
 ---
 
 ## Templates
 
-`templates/` contains pre-filled scaffolds for every artifact ADP expects.
-Copy them when bootstrapping, or let the skill create them for you.
+`templates/` contains scaffolds for every ADP artifact.
 
 | Template | Copies to | Purpose |
 |----------|-----------|---------|
-| `PROJECT.md` | `.specs/project/PROJECT.md` | Vision, goals, non-goals, personas, stack, constraints |
-| `ROADMAP.md` | `.specs/project/ROADMAP.md` | Now / Next / Later / Done milestones with status legend |
-| `STATE.md` | `.specs/project/STATE.md` | Decisions, Blockers, Learnings, Deferred Ideas, Todos |
-| `SPEC.md` | `.specs/features/{name}/spec.md` | Feature spec with REQ-NN User Stories + WHEN/THEN criteria |
-| `tasks.md` | `.specs/features/{name}/tasks.md` | Atomic tasks with Requirement / Files / Reuses / Parallel / Commit |
-| `HANDOFF.md` | `.specs/HANDOFF.md` | Pause/resume snapshot — progress, sensors, next steps |
-| `harness/auto-mode-typescript.yaml` | `.adp/harness.yaml` | Auto-mode harness for TS/Node — `start-server-and-test` smoke + Playwright e2e |
-| `harness/auto-mode-python.yaml` | `.adp/harness.yaml` | Auto-mode harness for Python — pytest with FastAPI `TestClient` for smoke, pytest-playwright for e2e |
-| `harness/auto-mode-rust.yaml` | `.adp/harness.yaml` | Auto-mode harness for Rust — `cargo test --test smoke` spawns the server in a tokio task |
-| `harness/auto-mode-go.yaml` | `.adp/harness.yaml` | Auto-mode harness for Go — `httptest.NewServer` inside a Go test for smoke |
-
-Bootstrap a new feature manually:
-
-```bash
-mkdir -p .specs/features/my-feature
-cp adp/templates/SPEC.md  .specs/features/my-feature/spec.md
-cp adp/templates/tasks.md .specs/features/my-feature/tasks.md
-```
-
-Or the recommended path — let `adp run my-feature` generate them with the spec
-filled in from your clarifying answers.
+| `PROJECT.md` | `.specs/project/PROJECT.md` | Vision, goals, personas, stack, constraints |
+| `ROADMAP.md` | `.specs/project/ROADMAP.md` | Milestones, features, status |
+| `STATE.md` | `.specs/project/STATE.md` | Decisions, blockers, deferred ideas |
+| `SPEC.md` | `.specs/features/{name}/spec.md` | Feature spec with REQ-NN User Stories |
+| `tasks.md` | `.specs/features/{name}/tasks.md` | Atomic tasks with REQ traceability |
+| `HANDOFF.md` | `.specs/HANDOFF.md` | Pause/resume snapshot |
+| `harness/auto-mode-*.yaml` | `.adp/harness.yaml` | Stack-specific auto-mode harness |
 
 ---
 
 ## Development
 
 ```bash
-npm run build          # tsc → dist/
-npm run typecheck      # tsc --noEmit
-npm run lint           # eslint
-npm test               # vitest run
-npm run test:watch     # vitest in watch mode
+npm install              # Install dependencies
+npm run build           # tsc → dist/
+npm run typecheck       # tsc --noEmit
+npm run lint            # eslint
+npm test                # vitest run
+npm run test:watch      # vitest watch mode
 ```
 
 Single test:
-
 ```bash
 npx vitest run src/harness/engine.test.ts
 npx vitest run -t "passes on exit code 0"
@@ -551,32 +387,9 @@ npx vitest run -t "passes on exit code 0"
 
 ---
 
-## Influences
-
-ADP is assembled from two complementary bodies of methodology, each contributing a distinct layer.
-
-### TLC Spec-Driven
-
-**[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** establishes the four-phase pipeline — **Specify → Design → Tasks → Execute** — that structures all ADP feature runs. It introduces the REQ-ID chain (requirements → tasks → commits → validation) and the feedforward guide pattern: generate context from your own codebase before each phase, not from a generic prior.
-
-ADP extends it with a **computational harness**: live sensors (typecheck / lint / test) enforced after every sprint, evaluator sub-agents that grade the output with fresh context, stuck detection when the same error repeats three times, and a feature-branch → PR workflow that makes the methodology machine-enforceable rather than advisory.
-
-### Karpathy's Agent Coding Skills
-
-**[Andrej Karpathy's coding guidelines](https://github.com/forrestchang/andrej-karpathy-skills)** encode four failure modes that LLMs consistently exhibit and the rules that prevent them. ADP adopts all four as hard execution-time constraints:
-
-| Principle | Failure it prevents | Where ADP enforces it |
-|-----------|--------------------|-----------------------|
-| **Think before coding** | Wrong assumptions baked in before checking | Clarification Gate — resolves from codebase → docs → industry standard before asking; at most one question per run |
-| **Simplicity first** | Over-engineering beyond what the spec requires | Code Minimalism rule — no speculative features, no single-use abstractions, no impossible-scenario error handling |
-| **Surgical changes** | Drive-by improvements that corrupt diffs and break review | Scope Lock + Code Minimalism — touch only task files; match existing style; clean up only your own mess |
-| **Goal-driven execution** | Stopping at "it seems to work" | Sprint Contract acceptance criteria + sensor gate — build until every criterion is verifiable, not until effort is expended |
-
----
-
 ## References
 
-- **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** — the four-phase spec-driven methodology (Specify → Design → Tasks → Execute) that ADP is built on.
-- **[Karpathy's Agent Coding Skills](https://github.com/forrestchang/andrej-karpathy-skills)** — four LLM coding discipline rules (think before coding, simplicity first, surgical changes, goal-driven execution) adopted by ADP as hard constraints.
-- **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/)** — commit message convention used by ADP.
-- **[Anthropic — Harness Design for Long-Running Apps](https://www.anthropic.com/research/building-effective-agents)** — the evaluator-as-separate-agent principle that underpins ADP's QA layer.
+- **[TLC Spec-Driven](https://agent-skills.techleads.club/skills/tlc-spec-driven/)** — Four-phase methodology (Specify → Design → Tasks → Execute)
+- **[Karpathy's Agent Coding Skills](https://github.com/forrestchang/andrej-karpathy-skills)** — LLM coding discipline rules
+- **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/)** — Commit message convention
+- **[Anthropic — Harness Design for Long-Running Apps](https://www.anthropic.com/research/building-effective-agents)** — Evaluator-as-separate-agent principle
