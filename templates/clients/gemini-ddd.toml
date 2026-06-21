@@ -1,0 +1,25 @@
+# Gemini Command: DDD
+
+description = "Domain-Driven Design modeling"
+
+[ddd]
+prompt = """Run DDD modeling for this project.
+
+Create `.specs/ddd/` with:
+1. BOUNDED_CONTEXTS.md — Context definitions, relationships
+2. UBIQUITOUS_LANG.md — Domain language glossary
+3. DOMAIN_MODELS.md — Entities, VOs, Aggregates
+4. CONTEXT_MAP.md — Mermaid context map
+
+Fill each template by:
+- Identifying bounded contexts from discovery
+- Defining ubiquitous language
+- Specifying domain models
+- Mapping context relationships
+
+Output summary when complete.
+"""
+
+[ddd.interactive]
+default = true
+description = "Ask questions interactively"

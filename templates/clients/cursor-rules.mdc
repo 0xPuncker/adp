@@ -1,0 +1,175 @@
+---
+name: sdd
+description: Spec-Driven Development methodology for Cursor
+---
+
+# Spec-Driven Development (SDD) in Cursor
+
+You are following the Spec-Driven Development methodology. All work traces from specs to code.
+
+## Core Principles
+
+1. **Spec is source of truth** — Requirements (REQ-NN) drive everything
+2. **Traceability** — Every task cites REQs, every commit cites tasks
+3. **Sprint contracts** — Bidirectional agreement before building
+4. **Sensor gates** — No commit passes without typecheck ✓ lint ✓ test
+5. **Validation** — REQ coverage is verified at feature end
+
+## Workflow
+
+### For New Features
+
+```
+1. adp feature "{request}"      → Create feature dir, seed spec.md
+2. adp run {feature}           → Specify → Design → Tasks → Execute → Validate
+3. adp status                  → Check pipeline status
+4. adp pause                   → Snapshot progress, stop gracefully
+5. adp resume                  → Continue from stopping point
+```
+
+### For Quick Fixes
+
+```
+1. adp run "quick: {desc}"     → Quick mode (spec → execute → validate)
+```
+
+### For Existing Projects
+
+```
+1. adp init                     → Detect stack, create .adp/, run adp map
+2. adp map                      → Generate guides from codebase
+```
+
+## Phase: Specify
+
+**Load guides:** `conventions.md`, `architecture.md`, `PROJECT.md`
+
+**Create spec.md** with:
+- REQ-NN IDs (traceable to tasks and commits)
+- User Stories (As a...I want...so that...)
+- Acceptance Criteria (WHEN/THEN form, testable)
+- Priority tags (⭐ MVP, P1, P2)
+
+**Ask questions:** Only for critical ambiguities that would cause wrong implementation
+
+## Phase: Design (Medium+)
+
+**Load guides:** `architecture.md`, `structure.md`, `integrations.md`
+
+**Create design.md** with:
+- Component architecture
+- Data flow + sequence
+- Interface contracts
+- Reuse map (cite existing code with file:line)
+
+## Phase: Tasks (Medium+)
+
+**Create tasks.md** with atomic tasks:
+- Each task cites REQ-NN it satisfies
+- Files to touch (≤5 per task)
+- Done-when criteria
+- Test to write/verify
+- Pre-specified commit message
+
+Mark `[P]` for tasks with no file overlap (parallel-eligible)
+
+## Phase: Execute
+
+**Per-task sprint:**
+
+1. **Contract** — Write sprint-N.md (what you'll build, verification)
+2. **Build** — Implement following guides
+3. **Sensors** — typecheck → lint → test (all must pass)
+4. **Score** — Evaluator grades (correctness, completeness, code_quality, test_coverage, security, resilience)
+5. **Commit** — Conventional Commit subject line only
+
+**Sensor failure?** Fix and retry. Same error 3× → blocker.
+
+**Evaluator below threshold?** Fix issues, re-run sensors, re-evaluate.
+
+## Phase: Validate
+
+After all tasks done:
+- REQ coverage check (every REQ has passing task)
+- Full sensor suite
+- Evaluator final pass
+- Interactive UAT (Complex only)
+
+## Commit Convention
+
+```
+feat(scope): short summary
+fix(scope): short summary
+refactor(scope): short summary
+docs(scope): short summary
+test(scope): short summary
+chore(scope): short summary
+```
+
+Subject line ONLY. No body.
+
+## Quick Reference
+
+| Command | Purpose |
+|---------|---------|
+| `adp init` | Initialize project |
+| `adp map` | Generate guides from codebase |
+| `adp run {feature}` | Full pipeline |
+| `adp run "quick: {desc}"` | Quick mode |
+| `adp status` | Show pipeline state |
+| `adp verify` | Run sensors |
+| `adp pause` | Stop gracefully |
+| `adp resume` | Continue |
+
+## Output Format
+
+**Sprint start:**
+```
+→ Sprint N: TASK-NN {summary}
+```
+
+**Sprint pass:**
+```
+  typecheck ✓  lint ✓  test ✓  (2.1s)
+← Sprint N ✓ — score 91/100
+```
+
+**Final summary:**
+```
+ADP Complete: {feature}
+══════════════════════════════════════════════════════
+ #   Task                       Score   REQs          Commit
+ 1   TASK-01 Setup              90/100  REQ-01        abc123f
+ 2   TASK-02 JWT parsing        88/100  REQ-02        def456g
+──────────────────────────────────────────────────────
+ Avg score: 89/100   REQ coverage: 3/3 ✓   Sensors: all ✓
+```
+
+## Critical Rules
+
+- NEVER skip sensors
+- NEVER ask to proceed between sprints
+- NO narration or recaps
+- Score every sprint
+- Update state.json after every sprint
+
+## State Files
+
+- `.adp/state.json` — Pipeline runtime state
+- `.specs/features/{feature}/spec.md` — Requirements
+- `.specs/features/{feature}/tasks.md` — Tasks
+- `.specs/features/{feature}/contracts/sprint-N.md` — Sprint contracts
+
+## Context Injection
+
+Guides are auto-loaded before each phase:
+- `stack.md` — Language, framework, build tools
+- `architecture.md` — Module layout, dependencies
+- `structure.md` — Directory structure
+- `conventions.md` — Naming, patterns, imports
+- `testing.md` — Test framework, patterns
+- `integrations.md` — External services, APIs
+- `concerns.md` — Tech debt, risks
+- `security.md` — Security posture
+
+These guides prevent mistakes by showing THIS project's actual patterns.

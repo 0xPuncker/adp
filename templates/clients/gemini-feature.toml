@@ -1,0 +1,26 @@
+# Gemini Command: Feature
+
+description = "Execute full SDD pipeline for a feature"
+
+[feature]
+prompt = """Execute Spec-Driven Development for feature: {{feature}}
+
+Steps:
+1. Parse request, derive slug
+2. Determine complexity (Small/Medium/Large/Complex)
+3. SPECIFY: Create spec.md with REQ-NN
+4. DESIGN (skip Small/Medium): Create design.md
+5. TASKS (skip Small): Create tasks.md
+6. EXECUTE: Sprint per task (contract → build → sensors → score → commit)
+7. VALIDATE: REQ coverage, sensors, evaluator
+
+Output final summary table.
+"""
+
+[feature.complexity]
+default = "auto"
+description = "Feature complexity (auto/Small/Medium/Large/Complex)"
+
+[feature.interactive]
+default = "critical"
+description = "When to ask questions (never/critical/always)"

@@ -21,6 +21,10 @@ import { WorktreeManager } from "./worktree/manager.js";
 import { runUpdate, fetchLatestSha } from "./lifecycle/update.js";
 import { runUninstall } from "./lifecycle/uninstall.js";
 import { initProject } from "./lifecycle/init.js";
+import { runDiscovery } from "./lifecycle/discovery.js";
+import { runDdd } from "./lifecycle/ddd.js";
+import { runExport } from "./lifecycle/export.js";
+import { runArchitecture } from "./lifecycle/architecture.js";
 import { startFeature } from "./features/manager.js";
 import { banner, box, divider, kv, ok, fail, info, bullet, palette, print } from "./cli/branding.js";
 import { readFile } from "node:fs/promises";
@@ -74,6 +78,21 @@ async function main(): Promise<void> {
       break;
     case "uninstall":
       await runUninstallCommand();
+      break;
+    case "discovery":
+      await runDiscoveryCommand();
+      break;
+    case "ddd":
+      await runDddCommand();
+      break;
+    case "export":
+      await runExportCommand();
+      break;
+    case "architecture":
+      await runArchitectureCommand();
+      break;
+    case "fidelity":
+      await runFidelityCommand(args[0]);
       break;
     case "start":
       await startPipeline(args[0], args[1]);
@@ -1063,6 +1082,69 @@ async function runUninstallCommand(): Promise<void> {
   );
 }
 
+async function runDiscoveryCommand(): Promise<void> {
+  console.log("\n  ADP Discovery — Lean Inception-style product discovery\n");
+  const result = await runDiscovery(cwd);
+  console.log(`  \x1b[32m✓\x1b[0m Discovery artifacts created at .specs/discovery/`);
+  for (const file of result.filesCreated) {
+    console.log(`    ${file}`);
+  }
+  console.log("");
+}
+
+async function runDddCommand(): Promise<void> {
+  console.log("\n  ADP DDD — Domain-Driven Design modeling\n");
+  const result = await runDdd(cwd);
+  console.log(`  \x1b[32m✓\x1b[0m DDD artifacts created at .specs/ddd/`);
+  for (const file of result.filesCreated) {
+    console.log(`    ${file}`);
+  }
+  console.log("");
+}
+
+async function runExportCommand(): Promise<void> {
+  const clientArgs = args[0]?.split(",") ?? ["all"];
+  const clients = clientArgs.map((c) => c.trim().toLowerCase());
+  console.log(`\n  ADP Export — Generating instructions for ${clients.join(", ")}\n`);
+  const results = await runExport(cwd, clients as ["cursor", "copilot", "windsurf", "gemini", "all"]);
+  for (const r of results) {
+    console.log(`  \x1b[32m✓\x1b[0m ${r.client}: ${r.filesCreated.length} files created`);
+  }
+  console.log("");
+}
+
+async function runArchitectureCommand(): Promise<void> {
+  console.log("\n  ADP Architecture — Architecture documentation\n");
+  const result = await runArchitecture(cwd);
+  console.log(`  \x1b[32m✓\x1b[0m Architecture artifacts created at .specs/architecture/`);
+  for (const file of result.filesCreated) {
+    console.log(`    ${file}`);
+  }
+  console.log("");
+}
+
+async function runFidelityCommand(feature?: string): Promise<void> {
+  if (!feature) {
+    console.log("  Usage: adp fidelity <feature>");
+    console.log("  Validates spec-to-code traceability for a feature.\n");
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`\n  ADP Fidelity — ${feature}\n`);
+  const { validateFidelity } = await import("./validation/fidelity.js");
+  const report = await validateFidelity(cwd, feature);
+  console.log(`  REQ Coverage:  ${report.reqCoverage}%`);
+  console.log(`  AC Coverage:   ${report.acCoverage}%`);
+  if (report.issues.length > 0) {
+    console.log(`\n  Issues:`);
+    for (const issue of report.issues) {
+      console.log(`    \x1b[33m⚠\x1b[0m ${issue.message}`);
+    }
+  }
+  console.log(`\n  Status: ${report.passed ? "\x1b[32mPASSED\x1b[0m" : "\x1b[31mFAILED\x1b[0m"}\n`);
+  if (!report.passed) process.exitCode = 1;
+}
+
 const COMPLETION_SHELLS = new Set(["bash", "zsh", "fish"]);
 
 async function runCompletions(shell?: string): Promise<void> {
@@ -1224,6 +1306,13 @@ function printUsage(): void {
     { cmd: "update", args: "[--branch X]", desc: "Re-run installer (auto-detects platform)" },
     { cmd: "uninstall", args: "[-y]", desc: "Remove skill files + CLI + standalone binary" },
   ];
+  const discovery: CmdRow[] = [
+    { cmd: "discovery", desc: "Run Lean Inception discovery, create .specs/discovery/" },
+    { cmd: "ddd", desc: "Domain-Driven Design modeling, create .specs/ddd/" },
+    { cmd: "export", args: "[clients]", desc: "Generate instructions for cursor, copilot, windsurf, gemini" },
+    { cmd: "architecture", desc: "Generate architecture docs, create .specs/architecture/" },
+    { cmd: "fidelity", args: "<feature>", desc: "Validate spec-to-code traceability" },
+  ];
 
   print(
     banner("ADP — Autonomous Development Pipeline", "Spec-to-code sprints with feedback control"),
@@ -1247,6 +1336,9 @@ function printUsage(): void {
     "",
     divider("Tooling"),
     commandTable(tooling),
+    "",
+    divider("Discovery"),
+    commandTable(discovery),
     "",
     box(
       [
