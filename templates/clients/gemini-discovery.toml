@@ -1,0 +1,25 @@
+# Gemini Command: Discovery
+
+description = "Run Lean Inception-style product discovery"
+
+[discovery]
+prompt = """Run discovery phase for this project.
+
+Create `.specs/discovery/` with:
+1. VISION.md — Product vision, goals, constraints
+2. STAKEHOLDERS.md — Personas, pain points, goals
+3. JOURNEYS.md — User journey maps
+4. CANVAS.md — MVP canvas (features, risks)
+5. ROADMAP.md — Discovery roadmap
+
+Fill each template by asking clarifying questions and applying Lean Inception patterns.
+Output summary when complete.
+"""
+
+[discovery.complexity]
+default = "medium"
+description = "Discovery complexity level"
+
+[discovery.interactive]
+default = true
+description = "Ask questions interactively"

@@ -128,6 +128,11 @@ to execute every phase, run sensors, and manage state.
 | `adp uninstall [-y]` | Remove ADP completely: skill files, npm CLI, standalone binary |
 | `adp pause` | Snapshot progress to `.specs/HANDOFF.md`, stop gracefully |
 | `adp resume` | Read HANDOFF.md + state.json, resume from exact stopping point |
+| `adp discovery` | Run Lean Inception-style product discovery, create `.specs/discovery/` |
+| `adp ddd` | Run Domain-Driven Design modeling, create `.specs/ddd/` |
+| `adp export [clients]` | Generate instruction files for other AI coding tools (cursor, copilot, windsurf, gemini) |
+| `adp architecture` | Generate architecture documentation, create `.specs/architecture/` |
+| `adp fidelity [feature]` | Validate spec-to-code traceability (REQ/AC coverage, traceability gaps) |
 
 ---
 
@@ -1971,6 +1976,180 @@ of `adp run` if any completed sprints have `score: null`.
 4. Re-read the in-progress task's files and guides.
 5. Continue from "Next Session" instructions.
 6. Do NOT restart from Specify.
+
+---
+
+## adp discovery
+
+Run Lean Inception-style product discovery to formalize the product vision and feature priorities.
+
+**Creates:** `.specs/discovery/` with 5 artifacts:
+
+```
+.specs/discovery/
+├── VISION.md         # Product vision, goals, success criteria
+├── STAKEHOLDERS.md   # Personas, goals, pain points
+├── JOURNEYS.md       # User journey maps
+├── CANVAS.md         # MVP canvas (features, risks, assumptions)
+└── ROADMAP.md        # Discovery roadmap (milestones, features, status)
+```
+
+**When to run:**
+- At project start, before `adp run`
+- When pivoting to a new market or user segment
+- When the product vision is unclear or debated
+
+**Output:**
+```
+✓ Discovery artifacts created at .specs/discovery/
+  - VISION.md
+  - STAKEHOLDERS.md
+  - JOURNEYS.md
+  - CANVAS.md
+  - ROADMAP.md
+```
+
+**Integration:** Use these artifacts to inform `.specs/project/PROJECT.md` and feature specs.
+
+---
+
+## adp ddd
+
+Run Domain-Driven Design modeling to establish ubiquitous language and bounded contexts.
+
+**Creates:** `.specs/ddd/` with 4 artifacts:
+
+```
+.specs/ddd/
+├── BOUNDED_CONTEXTS.md    # Context definitions and boundaries
+├── UBIQUITOUS_LANG.md     # Domain language glossary
+├── DOMAIN_MODELS.md       # Entity/VO/Aggregate definitions
+└── CONTEXT_MAP.md         # Mermaid context map template
+```
+
+**When to run:**
+- After `adp discovery`, to model the discovered domain
+- When refactoring a monolith into bounded contexts
+- When onboarding new developers to a complex domain
+
+**Output:**
+```
+✓ DDD artifacts created at .specs/ddd/
+  - BOUNDED_CONTEXTS.md
+  - UBIQUITOUS_LANG.md
+  - DOMAIN_MODELS.md
+  - CONTEXT_MAP.md
+```
+
+**Integration:** Use ubiquitous language in feature specs and task definitions. Reference bounded contexts in architecture docs.
+
+---
+
+## adp export [clients]
+
+Generate instruction files for other AI coding tools (Cursor, GitHub Copilot, Windsurf, Gemini CLI).
+
+**Clients:** `cursor`, `copilot`, `windsurf`, `gemini`, or `all` (default)
+
+**Creates:** Client-specific instruction files
+
+```
+.cursor/
+├── rules/sdd.mdc
+└── commands/{discovery,ddd,feature}.md
+
+.github/
+├── copilot-instructions.md
+└── prompts/sdd-methodology.prompt.md
+
+.windsurf/
+├── rules/sdd.md
+└── workflows/discovery.md
+
+.gemini/
+├── instructions.md
+└── commands/{discovery,ddd,feature}.toml
+```
+
+**When to run:**
+- After `adp init`, to enable multi-tool teams
+- When adding a new AI coding tool to the project
+
+**Output:**
+```
+✓ Exported for cursor: 4 files created
+✓ Exported for copilot: 2 files created
+✓ Exported for windsurf: 2 files created
+✓ Exported for gemini: 5 files created
+```
+
+---
+
+## adp architecture
+
+Generate architecture documentation to establish design patterns and decision records.
+
+**Creates:** `.specs/architecture/` with 5 artifacts:
+
+```
+.specs/architecture/
+├── OVERVIEW.md         # 5-axis overview (functional, info, deployment, tech, dev)
+├── CONTEXT_MAP.md      # System context (DDD-style)
+├── DIAGRAMS.md         # Mermaid diagrams (C4, sequence, state)
+├── ASSESSMENT.md       # Current state assessment
+└── adr/
+    └── 001-template.md # Architecture Decision Record template
+```
+
+**When to run:**
+- After `adp map`, to document discovered architecture
+- Before major refactors or migrations
+- When onboarding to an existing codebase
+
+**Output:**
+```
+✓ Architecture artifacts created at .specs/architecture/
+  - OVERVIEW.md
+  - CONTEXT_MAP.md
+  - DIAGRAMS.md
+  - ASSESSMENT.md
+  - adr/001-template.md
+```
+
+**Integration:** Reference ADRs in commit messages and PR descriptions. Keep diagrams in sync with code.
+
+---
+
+## adp fidelity [feature]
+
+Validate spec-to-code traceability to ensure requirements are implemented and tested.
+
+**Checks:**
+1. **REQ Coverage** — Every REQ-NN has ≥1 passing task
+2. **AC Coverage** — Every acceptance criterion has a test
+3. **Traceability** — Tasks cite REQs, commits cite tasks, validation confirms all
+4. **Orphan Detection** — No tasks without REQ citations
+5. **Spec Deviation** — Code behavior matches spec
+
+**Output:**
+```
+Feature: user-auth
+────────────────────────────────────────────
+REQ Coverage:  85% (6/7 REQs covered)
+AC Coverage:   100% (18/18 ACs tested)
+
+Issues:
+  ⚠ REQ-07 has no passing tasks
+  ⚠ TASK-05 has no REQ citation (orphan)
+
+Status: FAILED — 2 issues found
+```
+
+**When to run:**
+- After `adp run`, before pushing/PR
+- During `adp run` VALIDATE phase (automatic)
+
+**Exit codes:** 0 if passed, 1 if issues found
 
 ---
 
